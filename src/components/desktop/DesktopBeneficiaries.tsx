@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeftRight,
@@ -17,19 +17,11 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { mockBeneficiaries } from "@/data/beneficiaries";
+import type { SupabaseBeneficiary } from "@/types/supabase";
 
 import DesktopShell from "./DesktopShell";
 import DemoModal from "../shared/DemoModal";
 import DemoToast from "../shared/DemoToast";
-
-const beneficiaries = mockBeneficiaries.map((beneficiary, index) => ({
-  ...beneficiary,
-  type: "Particulier",
-  initials: beneficiary.name.split(" ").map((part) => part[0]).join(""),
-  favorite: index === 0,
-  active: index === 0,
-}));
 
 const recentTransfers = [
   {
@@ -75,7 +67,7 @@ function BeneficiaryRow({
   beneficiary,
   onSelect,
 }: {
-  beneficiary: (typeof beneficiaries)[number];
+  beneficiary: SupabaseBeneficiary;
   onSelect: () => void;
 }) {
   return (
@@ -121,16 +113,49 @@ function BeneficiaryRow({
 
 export function DesktopBeneficiaries() {
   const router = useRouter();
+  const [beneficiaries, setBeneficiaries] = useState<SupabaseBeneficiary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedName, setSelectedName] = useState(beneficiaries[0].name);
-  const [favorites, setFavorites] = useState<Record<string, boolean>>({ "Luca Romano": true });
+  const [selectedName, setSelectedName] = useState("");
+  const [favorites, setFavorites] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<null | "add" | "edit" | "quick" | "all">(null);
+
+  useEffect(() => {
+    async function fetchBeneficiaries() {
+      try {
+        const res = await fetch("/api/beneficiaries");
+        const data = await res.json();
+        if (data.success) {
+          setBeneficiaries(data.beneficiaries);
+        } else {
+          setError(true);
+        }
+      } catch {
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchBeneficiaries();
+  }, []);
+
+  function getTypeLabel(b: SupabaseBeneficiary): string {
+    if (b.type === "individual") return "Particulier";
+    if (b.type === "company") return "Professionnel";
+    return "Particulier";
+  }
+
   const filtered = useMemo(
-    () => beneficiaries.filter((item) => `${item.name} ${item.iban}`.toLowerCase().includes(search.toLowerCase())),
-    [search],
+    () => beneficiaries.filter((item) =>
+      `${item.name} ${item.iban} ${item.bank ?? ""} ${item.email ?? ""} ${item.phone ?? ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase())
+    ),
+    [beneficiaries, search],
   );
-  const selected = filtered.find((item) => item.name === selectedName) ?? filtered[0] ?? beneficiaries[0];
+  const selected = filtered.find((item) => item.name === selectedName) ?? filtered[0] ?? null;
 
   return (
     <DesktopShell>
@@ -162,9 +187,11 @@ export function DesktopBeneficiaries() {
                 Liste des bénéficiaires
               </h2>
 
-              <span className="rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-bold text-[#050033]">
-                {beneficiaries.length} actifs
-              </span>
+              {!loading && (
+                <span className="rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-bold text-[#050033]">
+                  {beneficiaries.length} actifs
+                </span>
+              )}
             </div>
 
             <div className="flex h-10 items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3">
@@ -178,109 +205,142 @@ export function DesktopBeneficiaries() {
             </div>
 
             <div className="mt-4 space-y-3">
-              {filtered.map((beneficiary) => (
-                <BeneficiaryRow
-                  key={beneficiary.name}
-                  onSelect={() => setSelectedName(beneficiary.name)}
-                  beneficiary={{ ...beneficiary, active: beneficiary.name === selected.name, favorite: favorites[beneficiary.name] ?? beneficiary.favorite }}
-                />
-              ))}
+              {loading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-[66px] animate-pulse rounded-[14px] bg-[#F3F4F6]"
+                  />
+                ))
+              ) : error ? (
+                <p className="py-6 text-center text-[14px] text-[#EF4444]">
+                  Impossible de charger les bénéficiaires pour le moment.
+                </p>
+              ) : beneficiaries.length === 0 ? (
+                <p className="py-6 text-center text-[14px] text-[#6B7280]">
+                  Aucun bénéficiaire disponible.
+                </p>
+              ) : filtered.length === 0 ? (
+                <p className="py-6 text-center text-[14px] text-[#6B7280]">
+                  Aucun bénéficiaire ne correspond à votre recherche.
+                </p>
+              ) : (
+                filtered.map((beneficiary) => (
+                  <BeneficiaryRow
+                    key={beneficiary.id}
+                    onSelect={() => setSelectedName(beneficiary.name)}
+                    beneficiary={{
+                      ...beneficiary,
+                      active: beneficiary.name === selected?.name,
+                      favorite: favorites[beneficiary.name] ?? beneficiary.favorite,
+                    }}
+                  />
+                ))
+              )}
             </div>
           </Card>
 
-          <Card className="col-span-5 p-5">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-4">
-                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#050033] text-[16px] font-bold text-white">
-                  {selected.initials}
-                </span>
-
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-[20px] font-bold text-[#090927]">{selected.name}</h2>
-                    <button
-                      type="button"
-                      aria-label="Basculer favori"
-                      onClick={() =>
-                        setFavorites((current) => ({ ...current, [selected.name]: !(current[selected.name] ?? false) }))
-                      }
-                    >
-                      <Star
-                        size={16}
-                        className={(favorites[selected.name] ?? false) ? "fill-[#9ACD00] text-[#9ACD00]" : "text-[#9CA3AF]"}
-                      />
-                    </button>
-                  </div>
-                  <p className="mt-1 text-[13px] text-[#6B7280]">
-                    {selected.type}
-                  </p>
-                  <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-semibold text-[#050033]">
-                    <CheckCircle2 size={14} className="text-[#7AA600]" />
-                    Bénéficiaire vérifié
+          {selected ? (
+            <Card className="col-span-5 p-5">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#050033] text-[16px] font-bold text-white">
+                    {selected.initials}
                   </span>
+
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-[20px] font-bold text-[#090927]">{selected.name}</h2>
+                      <button
+                        type="button"
+                        aria-label="Basculer favori"
+                        onClick={() =>
+                          setFavorites((current) => ({ ...current, [selected.name]: !(current[selected.name] ?? false) }))
+                        }
+                      >
+                        <Star
+                          size={16}
+                          className={(favorites[selected.name] ?? false) ? "fill-[#9ACD00] text-[#9ACD00]" : "text-[#9CA3AF]"}
+                        />
+                      </button>
+                    </div>
+                    <p className="mt-1 text-[13px] text-[#6B7280]">
+                      {getTypeLabel(selected)}
+                    </p>
+                    <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-semibold text-[#050033]">
+                      <CheckCircle2 size={14} className="text-[#7AA600]" />
+                      Bénéficiaire vérifié
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  aria-label="Menu actions beneficiaire"
+                  onClick={() => setToast("Menu beneficiaire ouvert ")}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-[#050033]"
+                >
+                  <MoreVertical size={18} />
+                </button>
+              </div>
+
+              <div className="mt-6 grid grid-cols-2 gap-4">
+                <div className="rounded-[14px] bg-[#F6F7F9] p-4">
+                  <p className="text-[12px] text-[#6B7280]">IBAN</p>
+                  <p className="mt-2 text-[14px] font-bold leading-[1.4] text-[#090927]">
+                    {selected.iban}
+                  </p>
+                </div>
+
+                <div className="rounded-[14px] bg-[#F6F7F9] p-4">
+                  <p className="text-[12px] text-[#6B7280]">Banque</p>
+                  <p className="mt-2 text-[14px] font-bold leading-[1.4] text-[#090927]">
+                    {selected.bank}
+                  </p>
+                </div>
+
+                <div className="rounded-[14px] bg-[#F6F7F9] p-4">
+                  <p className="text-[12px] text-[#6B7280]">Ajouté le</p>
+                  <p className="mt-2 text-[14px] font-bold text-[#090927]">
+                    12 avril 2024
+                  </p>
+                </div>
+
+                <div className="rounded-[14px] bg-[#F6F7F9] p-4">
+                  <p className="text-[12px] text-[#6B7280]">Dernier virement</p>
+                  <p className="mt-2 text-[14px] font-bold text-[#090927]">
+                    24 mai 2024
+                  </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                aria-label="Menu actions beneficiaire"
-                onClick={() => setToast("Menu beneficiaire ouvert ")}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-[#050033]"
-              >
-                <MoreVertical size={18} />
-              </button>
-            </div>
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => router.push("/virements")}
+                  className="flex h-10 flex-1 items-center justify-center gap-2 rounded-[10px] bg-[#050033] text-[14px] font-bold text-white interactive-button"
+                >
+                  <ArrowLeftRight size={16} />
+                  Faire un virement
+                </button>
 
-            <div className="mt-6 grid grid-cols-2 gap-4">
-              <div className="rounded-[14px] bg-[#F6F7F9] p-4">
-                <p className="text-[12px] text-[#6B7280]">IBAN</p>
-                <p className="mt-2 text-[14px] font-bold leading-[1.4] text-[#090927]">
-                  {selected.iban}
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setModal("edit")}
+                  className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033] interactive-button"
+                >
+                  <Edit3 size={16} />
+                  Modifier
+                </button>
               </div>
-
-              <div className="rounded-[14px] bg-[#F6F7F9] p-4">
-                <p className="text-[12px] text-[#6B7280]">Banque</p>
-                <p className="mt-2 text-[14px] font-bold leading-[1.4] text-[#090927]">
-                  {selected.bank}
-                </p>
-              </div>
-
-              <div className="rounded-[14px] bg-[#F6F7F9] p-4">
-                <p className="text-[12px] text-[#6B7280]">Ajouté le</p>
-                <p className="mt-2 text-[14px] font-bold text-[#090927]">
-                  12 avril 2024
-                </p>
-              </div>
-
-              <div className="rounded-[14px] bg-[#F6F7F9] p-4">
-                <p className="text-[12px] text-[#6B7280]">Dernier virement</p>
-                <p className="mt-2 text-[14px] font-bold text-[#090927]">
-                  24 mai 2024
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => router.push("/virements")}
-                className="flex h-10 flex-1 items-center justify-center gap-2 rounded-[10px] bg-[#050033] text-[14px] font-bold text-white interactive-button"
-              >
-                <ArrowLeftRight size={16} />
-                Faire un virement
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModal("edit")}
-                className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033] interactive-button"
-              >
-                <Edit3 size={16} />
-                Modifier
-              </button>
-            </div>
-          </Card>
+            </Card>
+          ) : (
+            <Card className="col-span-5 p-5">
+              <p className="py-12 text-center text-[14px] text-[#6B7280]">
+                {loading ? "Chargement des bénéficiaires..." : "Sélectionnez un bénéficiaire"}
+              </p>
+            </Card>
+          )}
 
           <Card className="col-span-3 p-5">
             <h2 className="text-[18px] font-bold text-[#090927]">
@@ -301,10 +361,10 @@ export function DesktopBeneficiaries() {
               <div className="rounded-[14px] bg-[#F6F7F9] p-4">
                 <div className="flex items-center gap-3">
                   <Clock3 size={21} className="text-[#050033]" />
-                  <p className="font-bold text-[#090927]">Délai d’activation</p>
+                  <p className="font-bold text-[#090927]">Délai d&rsquo;activation</p>
                 </div>
                 <p className="mt-2 text-[12px] leading-[1.4] text-[#6B7280]">
-                  Un délai d’activation peut s’appliquer selon le bénéficiaire.
+                  Un délai d&rsquo;activation peut s&rsquo;appliquer selon le bénéficiaire.
                 </p>
               </div>
             </div>
@@ -412,7 +472,7 @@ export function DesktopBeneficiaries() {
       </div>
       <DemoModal open={modal === "add"} title="Ajouter un beneficiaire" message="Vérifiez les informations avant validation." onClose={() => setModal(null)} onConfirm={() => { setModal(null); setToast("Beneficiaire ajoute "); }} />
       <DemoModal open={modal === "edit"} title="Modifier le beneficiaire" message="Modification du bénéficiaire sélectionné." onClose={() => setModal(null)} onConfirm={() => { setModal(null); setToast("Beneficiaire modifie "); }} />
-      <DemoModal open={modal === "quick"} title="Ajout rapide" message="Assistant d’ajout rapide ouvert." onClose={() => setModal(null)} />
+      <DemoModal open={modal === "quick"} title="Ajout rapide" message="Assistant d'ajout rapide ouvert." onClose={() => setModal(null)} />
       <DemoModal open={modal === "all"} title="Tous les virements" message="Historique complet des virements ouvert." onClose={() => setModal(null)} />
       <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />
     </DesktopShell>

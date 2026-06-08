@@ -26,6 +26,7 @@ export type SupabaseBeneficiary = {
   initials?: string | null;
   favorite: boolean;
   active: boolean;
+  type?: string | null;
 };
 
 export type SupabaseTransaction = {

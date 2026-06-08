@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeftRight,
@@ -15,19 +15,11 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { mockBeneficiaries } from "@/data/beneficiaries";
+import type { SupabaseBeneficiary } from "@/types/supabase";
 
 import MobileShell from "./MobileShell";
 import DemoModal from "../shared/DemoModal";
 import DemoToast from "../shared/DemoToast";
-
-const beneficiaries = mockBeneficiaries.map((beneficiary, index) => ({
-  ...beneficiary,
-  initials: beneficiary.name.split(" ").map((part) => part[0]).join(""),
-  type: "Particulier",
-  active: index === 0,
-  favorite: index === 0,
-}));
 
 const transfers = [
   {
@@ -68,16 +60,49 @@ function MobileCard({
 
 export function MobileBeneficiaries() {
   const router = useRouter();
+  const [beneficiaries, setBeneficiaries] = useState<SupabaseBeneficiary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedName, setSelectedName] = useState(beneficiaries[0].name);
-  const [favorites, setFavorites] = useState<Record<string, boolean>>({ "Luca Romano": true });
+  const [selectedName, setSelectedName] = useState("");
+  const [favorites, setFavorites] = useState<Record<string, boolean>>({});
   const [modal, setModal] = useState<null | "add" | "edit" | "quick" | "all">(null);
   const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    async function fetchBeneficiaries() {
+      try {
+        const res = await fetch("/api/beneficiaries");
+        const data = await res.json();
+        if (data.success) {
+          setBeneficiaries(data.beneficiaries);
+        } else {
+          setError(true);
+        }
+      } catch {
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchBeneficiaries();
+  }, []);
+
+  function getTypeLabel(b: SupabaseBeneficiary): string {
+    if (b.type === "individual") return "Particulier";
+    if (b.type === "company") return "Professionnel";
+    return "Particulier";
+  }
+
   const filtered = useMemo(
-    () => beneficiaries.filter((item) => `${item.name} ${item.iban}`.toLowerCase().includes(search.toLowerCase())),
-    [search],
+    () => beneficiaries.filter((item) =>
+      `${item.name} ${item.iban} ${item.bank ?? ""} ${item.email ?? ""} ${item.phone ?? ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase())
+    ),
+    [beneficiaries, search],
   );
-  const selected = filtered.find((item) => item.name === selectedName) ?? filtered[0] ?? beneficiaries[0];
+  const selected = filtered.find((item) => item.name === selectedName) ?? filtered[0] ?? null;
 
   return (
     <MobileShell>
@@ -119,119 +144,144 @@ export function MobileBeneficiaries() {
             <h2 className="text-[17px] font-bold text-[#090927]">
               Mes bénéficiaires
             </h2>
-            <span className="rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-bold text-[#050033]">
-              3 actifs
-            </span>
+            {!loading && (
+              <span className="rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-bold text-[#050033]">
+                {beneficiaries.length} actifs
+              </span>
+            )}
           </div>
 
           <div className="space-y-3">
-            {filtered.map((beneficiary) => (
-              <button
-                key={beneficiary.name}
-                type="button"
-                onClick={() => setSelectedName(beneficiary.name)}
-                className={`flex w-full items-center justify-between rounded-[14px] border p-3 text-left ${
-                  beneficiary.name === selected.name
-                    ? "border-2 border-[#9ACD00] bg-white"
-                    : "border-[#E5E7EB] bg-white"
-                }`}
-              >
-                <span className="flex min-w-0 items-center gap-3">
-                  <span
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${
-                      beneficiary.active
-                        ? "bg-[#050033] text-white"
-                        : "bg-[#F3F4F6] text-[#050033]"
-                    }`}
-                  >
-                    {beneficiary.initials}
-                  </span>
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-[66px] animate-pulse rounded-[14px] bg-[#F3F4F6]"
+                />
+              ))
+            ) : error ? (
+              <p className="py-6 text-center text-[14px] text-[#EF4444]">
+                Impossible de charger les bénéficiaires pour le moment.
+              </p>
+            ) : beneficiaries.length === 0 ? (
+              <p className="py-6 text-center text-[14px] text-[#6B7280]">
+                Aucun bénéficiaire disponible.
+              </p>
+            ) : filtered.length === 0 ? (
+              <p className="py-6 text-center text-[14px] text-[#6B7280]">
+                Aucun bénéficiaire ne correspond à votre recherche.
+              </p>
+            ) : (
+              filtered.map((beneficiary) => (
+                <button
+                  key={beneficiary.id}
+                  type="button"
+                  onClick={() => setSelectedName(beneficiary.name)}
+                  className={`flex w-full items-center justify-between rounded-[14px] border p-3 text-left ${
+                    beneficiary.name === selected?.name
+                      ? "border-2 border-[#9ACD00] bg-white"
+                      : "border-[#E5E7EB] bg-white"
+                  }`}
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${
+                        beneficiary.name === selected?.name
+                          ? "bg-[#050033] text-white"
+                          : "bg-[#F3F4F6] text-[#050033]"
+                      }`}
+                    >
+                      {beneficiary.initials}
+                    </span>
 
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate text-[14px] font-bold text-[#090927]">
-                        {beneficiary.name}
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-[14px] font-bold text-[#090927]">
+                          {beneficiary.name}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Favori ${beneficiary.name}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setFavorites((current) => ({
+                              ...current,
+                              [beneficiary.name]: !(current[beneficiary.name] ?? beneficiary.favorite),
+                            }));
+                          }}
+                          className="inline-flex"
+                        >
+                          <Star
+                            size={13}
+                            className={
+                              (favorites[beneficiary.name] ?? beneficiary.favorite)
+                                ? "fill-[#9ACD00] text-[#9ACD00]"
+                                : "text-[#9CA3AF]"
+                            }
+                          />
+                        </button>
                       </span>
-                      <button
-                        type="button"
-                        aria-label={`Favori ${beneficiary.name}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setFavorites((current) => ({
-                            ...current,
-                            [beneficiary.name]: !(current[beneficiary.name] ?? beneficiary.favorite),
-                          }));
-                        }}
-                        className="inline-flex"
-                      >
-                        <Star
-                          size={13}
-                          className={
-                            (favorites[beneficiary.name] ?? beneficiary.favorite)
-                              ? "fill-[#9ACD00] text-[#9ACD00]"
-                              : "text-[#9CA3AF]"
-                          }
-                        />
-                      </button>
-                    </span>
-                    <span className="mt-1 block truncate text-[12px] text-[#6B7280]">
-                      {beneficiary.iban}
+                      <span className="mt-1 block truncate text-[12px] text-[#6B7280]">
+                        {beneficiary.iban}
+                      </span>
                     </span>
                   </span>
-                </span>
 
-                <ChevronRight size={17} className="text-[#050033]" />
-              </button>
-            ))}
+                  <ChevronRight size={17} className="text-[#050033]" />
+                </button>
+              ))
+            )}
           </div>
         </MobileCard>
 
-        <MobileCard className="p-4">
-          <div className="flex items-start gap-4">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#050033] text-[16px] font-bold text-white">
-              {selected.initials}
-            </span>
-
-            <div className="min-w-0 flex-1">
-              <h2 className="text-[19px] font-bold text-[#090927]">
-                {selected.name}
-              </h2>
-              <p className="mt-1 text-[13px] text-[#6B7280]">{selected.type}</p>
-
-              <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-semibold text-[#050033]">
-                <CheckCircle2 size={14} className="text-[#7AA600]" />
-                Vérifié
+        {selected && (
+          <MobileCard className="p-4">
+            <div className="flex items-start gap-4">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#050033] text-[16px] font-bold text-white">
+                {selected.initials}
               </span>
+
+              <div className="min-w-0 flex-1">
+                <h2 className="text-[19px] font-bold text-[#090927]">
+                  {selected.name}
+                </h2>
+                <p className="mt-1 text-[13px] text-[#6B7280]">{getTypeLabel(selected)}</p>
+
+                <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-semibold text-[#050033]">
+                  <CheckCircle2 size={14} className="text-[#7AA600]" />
+                  Vérifié
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div className="mt-4 rounded-[14px] bg-[#F6F7F9] p-3">
-            <p className="text-[12px] text-[#6B7280]">IBAN</p>
-            <p className="mt-1 text-[14px] font-bold text-[#090927]">
-              {selected.iban}
-            </p>
-          </div>
+            <div className="mt-4 rounded-[14px] bg-[#F6F7F9] p-3">
+              <p className="text-[12px] text-[#6B7280]">IBAN</p>
+              <p className="mt-1 text-[14px] font-bold text-[#090927]">
+                {selected.iban}
+              </p>
+            </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => router.push("/virements")}
-              className="flex h-10 items-center justify-center gap-2 rounded-[10px] bg-[#050033] text-[13px] font-bold text-white"
-            >
-              <ArrowLeftRight size={15} />
-              Virement
-            </button>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => router.push("/virements")}
+                className="flex h-10 items-center justify-center gap-2 rounded-[10px] bg-[#050033] text-[13px] font-bold text-white"
+              >
+                <ArrowLeftRight size={15} />
+                Virement
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setModal("edit")}
-              className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-[#050033] text-[13px] font-semibold text-[#050033]"
-            >
-              <Edit3 size={15} />
-              Modifier
-            </button>
-          </div>
-        </MobileCard>
+              <button
+                type="button"
+                onClick={() => setModal("edit")}
+                className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-[#050033] text-[13px] font-semibold text-[#050033]"
+              >
+                <Edit3 size={15} />
+                Modifier
+              </button>
+            </div>
+          </MobileCard>
+        )}
 
         <MobileCard className="p-4">
           <h2 className="text-[17px] font-bold text-[#090927]">
@@ -317,7 +367,7 @@ export function MobileBeneficiaries() {
       </div>
       <DemoModal open={modal === "add"} title="Ajouter un beneficiaire" message="Vérifiez les informations avant validation." onClose={() => setModal(null)} onConfirm={() => { setModal(null); setToast("Beneficiaire ajoute "); }} />
       <DemoModal open={modal === "edit"} title="Modifier le beneficiaire" message="Modification du bénéficiaire sélectionné." onClose={() => setModal(null)} onConfirm={() => { setModal(null); setToast("Beneficiaire modifie "); }} />
-      <DemoModal open={modal === "quick"} title="Ajout rapide" message="Assistant d’ajout rapide ouvert." onClose={() => setModal(null)} />
+      <DemoModal open={modal === "quick"} title="Ajout rapide" message="Assistant d'ajout rapide ouvert." onClose={() => setModal(null)} />
       <DemoModal open={modal === "all"} title="Tous les virements" message="Historique complet des virements ouvert." onClose={() => setModal(null)} />
       <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />
     </MobileShell>
