@@ -66,15 +66,12 @@ function formatAmount(value: string) {
   return `${parseAmount(value).toFixed(2).replace(".", ",")} EUR`;
 }
 
-function generateTransferReference() {
+function todayDateString(): string {
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
-  const h = String(now.getHours()).padStart(2, "0");
-  const min = String(now.getMinutes()).padStart(2, "0");
-  const suffix = String(Math.floor(Math.random() * 9000) + 1000);
-  return `VIR-${y}${m}${d}-${h}${min}-${suffix}`;
+  return `${y}-${m}-${d}`;
 }
 
 function generateTemporaryReference() {
@@ -128,6 +125,8 @@ export default function MobileDirectTransfer() {
   const [selectedTransferTypeId, setSelectedTransferTypeId] = useState("instant");
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [temporaryReference, setTemporaryReference] = useState("");
   const [finalReference, setFinalReference] = useState("");
@@ -213,6 +212,7 @@ export default function MobileDirectTransfer() {
   function resetEmailForNewTransfer() {
     resetEmailNotice();
     setFinalReference("");
+    setSubmitError(null);
   }
 
   function sendBeneficiaryNotice(reference: string, validationDate: Date) {
@@ -245,23 +245,76 @@ export default function MobileDirectTransfer() {
     });
   }
 
-  function validateTransfer() {
-    const currentDate = new Date();
-    const reference = finalReference || generateTransferReference();
-    setValidatedAt(currentDate);
-    setFinalReference(reference);
-    setStep("success");
-    addTransferNotification({ beneficiary: formData.beneficiaryName, amount, reference });
-    addTransferMessage({
-      beneficiary: formData.beneficiaryName,
-      amount,
-      reference,
-      accountName: selectedDebitAccount.name,
-      executionDate,
-      validationDate: currentDate.toLocaleDateString("fr-FR"),
-      validationTime: currentDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-    });
-    sendBeneficiaryNotice(reference, currentDate);
+  function getTransferPayload() {
+    return {
+      accountCode: selectedDebitAccountId,
+      accountId: null,
+      beneficiaryId: null,
+      beneficiaryName: formData.beneficiaryName.trim(),
+      beneficiaryIban: formData.iban.trim(),
+      beneficiaryBank: formData.bankName.trim(),
+      beneficiaryEmail: formData.email.trim(),
+      amount: parseAmount(formData.amount),
+      reason: formData.reason.trim() || "Virement",
+      transferType: selectedTransferTypeId,
+      executionDate: selectedTransferTypeId === "scheduled" ? formData.executionDate : todayDateString(),
+      idempotencyKey: crypto.randomUUID(),
+    };
+  }
+
+  async function validateTransfer() {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const payload = getTransferPayload();
+      const response = await fetch("/api/transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json() as { success: boolean; transfer?: { reference?: string }; error?: string; message?: string };
+
+      if (!result.success || !result.transfer?.reference) {
+        const errorCode = result.error || "UNKNOWN";
+        const errorMessage = result.message || "Une erreur est survenue lors du virement. Veuillez réessayer.";
+        const codeMessages: Record<string, string> = {
+          INVALID_AMOUNT: "Montant invalide.",
+          MISSING_ACCOUNT: "Veuillez sélectionner un compte débiteur.",
+          MISSING_BENEFICIARY_NAME: "Veuillez renseigner le nom du bénéficiaire.",
+          MISSING_BENEFICIARY_IBAN: "Veuillez renseigner l'IBAN du bénéficiaire.",
+          INSUFFICIENT_FUNDS: "Solde insuffisant pour effectuer ce virement.",
+          ACCOUNT_NOT_FOUND: "Compte débiteur introuvable.",
+          ACCOUNT_NOT_ACTIVE: "Ce compte n'est pas actif.",
+          INVALID_TRANSFER_TYPE: "Type de virement invalide.",
+        };
+        setSubmitError(codeMessages[errorCode] || errorMessage);
+        return;
+      }
+
+      const supabaseReference = result.transfer.reference;
+      const currentDate = new Date();
+      setValidatedAt(currentDate);
+      setFinalReference(supabaseReference);
+      setStep("success");
+      addTransferNotification({ beneficiary: formData.beneficiaryName, amount, reference: supabaseReference });
+      addTransferMessage({
+        beneficiary: formData.beneficiaryName,
+        amount,
+        reference: supabaseReference,
+        accountName: selectedDebitAccount.name,
+        executionDate,
+        validationDate: currentDate.toLocaleDateString("fr-FR"),
+        validationTime: currentDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      });
+      sendBeneficiaryNotice(supabaseReference, currentDate);
+    } catch {
+      setSubmitError("Une erreur réseau est survenue. Veuillez réessayer.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function selectTransferType(typeId: string) {
@@ -278,6 +331,8 @@ export default function MobileDirectTransfer() {
     setTemporaryReference("");
     setFinalReference("");
     resetEmailNotice();
+    setSubmitError(null);
+    setIsSubmitting(false);
     setStep("form");
   }
 
@@ -435,22 +490,26 @@ export default function MobileDirectTransfer() {
                       </div>
                     </div>
 
+                    {submitError ? <div className="rounded-[10px] border border-[#DC2626] bg-[#FEF2F2] p-3 text-[13px] text-[#DC2626]">{submitError}</div> : null}
+
                     {/* CTA Buttons */}
                     <div className="grid grid-cols-2 gap-3 pt-2">
                       <button
                         type="button"
                         onClick={() => { resetEmailForNewTransfer(); setStep("form"); }}
-                        className="flex h-[50px] items-center justify-center rounded-[14px] border-2 border-[#050033]/20 text-[15px] font-semibold text-[#050033] transition-all active:scale-[0.97]"
+                        disabled={isSubmitting}
+                        className="flex h-[50px] items-center justify-center rounded-[14px] border-2 border-[#050033]/20 text-[15px] font-semibold text-[#050033] transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {t("common.back")}
                       </button>
                       <button
                         type="button"
                         onClick={validateTransfer}
-                        className="flex h-[50px] items-center justify-center gap-2 rounded-[14px] bg-[#050033] text-[15px] font-bold text-white shadow-[0_4px_14px_rgba(5,0,51,0.25)] transition-all active:scale-[0.97]"
+                        disabled={isSubmitting}
+                        className="flex h-[50px] items-center justify-center gap-2 rounded-[14px] bg-[#050033] text-[15px] font-bold text-white shadow-[0_4px_14px_rgba(5,0,51,0.25)] transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {t("common.validate")}
-                        <ArrowRight size={16} />
+                        {isSubmitting ? "Traitement en cours..." : t("common.validate")}
+                        {isSubmitting ? null : <ArrowRight size={16} />}
                       </button>
                     </div>
                   </div>
