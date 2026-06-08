@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -30,32 +30,41 @@ import Link from "next/link";
 import ClientOnlyChart from "../shared/ClientOnlyChart";
 import DemoModal from "../shared/DemoModal";
 import DemoToast from "../shared/DemoToast";
+import type { SupabaseAccount, SupabaseTransaction } from "@/types/supabase";
 
 import DesktopShell from "./DesktopShell";
 
-const accounts = [
-  {
-    name: "Compte courant",
-    iban: "LU12 0019 1234 5678 9000",
-    balance: "84.320,00 €",
-    active: true,
-    icon: Wallet,
-  },
-  {
-    name: "Compte épargne",
-    iban: "LU34 0019 9876 5432 1000",
-    balance: "185.680,00 €",
-    active: false,
-    icon: Wallet,
-  },
-  {
-    name: "Compte joint",
-    iban: "LU78 0019 2468 1357 9000",
-    balance: "30.000,00 €",
-    active: false,
-    icon: Users,
-  },
-];
+type AccountsApiResponse =
+  | { success: true; accounts: SupabaseAccount[] }
+  | { success: false; error: string };
+
+type TransactionsApiResponse =
+  | { success: true; transactions: SupabaseTransaction[] }
+  | { success: false; error: string };
+
+type AccountViewModel = {
+  id: string;
+  supabaseId: string;
+  name: string;
+  type: SupabaseAccount["type"];
+  iban: string;
+  balance: string;
+  rawBalance: number;
+  currency: SupabaseAccount["currency"];
+  holderName?: string;
+  icon: typeof Wallet;
+};
+
+type TransactionViewModel = {
+  id: string;
+  date: string;
+  time: string;
+  label: string;
+  category: string;
+  amount: string;
+  positive: boolean;
+  icon: typeof ArrowDown;
+};
 
 const cashflow = [
   { month: "Janv.", Encaissements: 1250, Décaissements: -420 },
@@ -66,53 +75,71 @@ const cashflow = [
   { month: "Juin", Encaissements: 2620, Décaissements: 0 },
 ];
 
-const transactions = [
-  {
-    date: "15 juillet 2022",
-    time: "14:37",
-    label: "Virement reçu — Compte italien",
-    category: "Virement international",
-    amount: "+ 18.750,00 €",
-    positive: true,
-    icon: ArrowDown,
-  },
-  {
-    date: "15 janvier 2022",
-    time: "09:18",
-    label: "Virement reçu — Compte italien",
-    category: "Virement international",
-    amount: "+ 18.750,00 €",
-    positive: true,
-    icon: ArrowDown,
-  },
-  {
-    date: "15 juillet 2021",
-    time: "16:05",
-    label: "Virement reçu — Compte italien",
-    category: "Virement international",
-    amount: "+ 18.750,00 €",
-    positive: true,
-    icon: ArrowDown,
-  },
-  {
-    date: "15 janvier 2021",
-    time: "10:42",
-    label: "Virement reçu — Compte italien",
-    category: "Virement international",
-    amount: "+ 18.750,00 €",
-    positive: true,
-    icon: ArrowDown,
-  },
-  {
-    date: "15 juillet 2020",
-    time: "13:26",
-    label: "Virement reçu — Compte italien",
-    category: "Virement international",
-    amount: "+ 18.750,00 €",
-    positive: true,
-    icon: ArrowDown,
-  },
-];
+function formatCurrency(value: number | string, currency = "EUR") {
+  const amount = Number(value);
+
+  if (!Number.isFinite(amount)) return "Montant indisponible";
+
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency,
+  }).format(amount);
+}
+
+function formatSignedCurrency(value: number | string, direction: SupabaseTransaction["direction"], currency = "EUR") {
+  const amount = Math.abs(Number(value));
+
+  if (!Number.isFinite(amount)) return "Montant indisponible";
+
+  return `${direction === "credit" ? "+" : "-"} ${formatCurrency(amount, currency)}`;
+}
+
+function formatDate(value: string) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return "--:--";
+  return value.slice(0, 5);
+}
+
+function getAccountIcon(account: Pick<SupabaseAccount, "code" | "type">) {
+  return account.code === "joint" || account.type === "joint" ? Users : Wallet;
+}
+
+function mapAccount(account: SupabaseAccount): AccountViewModel {
+  const rawBalance = Number(account.available_balance ?? account.balance);
+
+  return {
+    id: account.code,
+    supabaseId: account.id,
+    name: account.name,
+    type: account.type,
+    iban: account.iban,
+    balance: formatCurrency(rawBalance, account.currency),
+    rawBalance: Number.isFinite(rawBalance) ? rawBalance : 0,
+    currency: account.currency,
+    holderName: account.holder_name,
+    icon: getAccountIcon(account),
+  };
+}
+
+function mapTransaction(transaction: SupabaseTransaction): TransactionViewModel {
+  return {
+    id: transaction.id || transaction.reference || `${transaction.transaction_date}-${transaction.transaction_time}`,
+    date: formatDate(transaction.transaction_date),
+    time: formatTime(transaction.transaction_time),
+    label: transaction.label,
+    category: transaction.category ?? "Opération",
+    amount: formatSignedCurrency(transaction.amount, transaction.direction, transaction.currency),
+    positive: transaction.direction === "credit",
+    icon: transaction.direction === "credit" ? ArrowDown : ArrowUp,
+  };
+}
 
 function Card({
   children,
@@ -135,7 +162,7 @@ function AccountCard({
   active,
   onSelect,
 }: {
-  account: (typeof accounts)[number];
+  account: AccountViewModel;
   active: boolean;
   onSelect: () => void;
 }) {
@@ -203,13 +230,84 @@ function StatItem({
 }
 
 export function DesktopAccounts() {
-  const [selectedAccount, setSelectedAccount] = useState(accounts[0].name);
+  const [accounts, setAccounts] = useState<AccountViewModel[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState("");
+  const [transactions, setTransactions] = useState<TransactionViewModel[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [transactionsError, setTransactionsError] = useState("");
+  const [selectedAccount, setSelectedAccount] = useState("current");
   const [selectedFilter, setSelectedFilter] = useState("Tous les comptes");
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
   const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAccounts() {
+      setAccountsLoading(true);
+      setAccountsError("");
+
+      try {
+        const response = await fetch("/api/accounts");
+        const result = (await response.json()) as AccountsApiResponse;
+
+        if (!response.ok || !result.success) {
+          throw new Error("ACCOUNTS_FETCH_FAILED");
+        }
+
+        if (!ignore) {
+          const nextAccounts = result.accounts.map(mapAccount);
+          setAccounts(nextAccounts);
+          setSelectedAccount((current) => nextAccounts.some((item) => item.id === current) ? current : nextAccounts[0]?.id ?? "");
+        }
+      } catch {
+        if (!ignore) setAccountsError("Impossible de charger les comptes pour le moment.");
+      } finally {
+        if (!ignore) setAccountsLoading(false);
+      }
+    }
+
+    void loadAccounts();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadTransactions() {
+      setTransactionsLoading(true);
+      setTransactionsError("");
+
+      try {
+        const response = await fetch("/api/transactions");
+        const result = (await response.json()) as TransactionsApiResponse;
+
+        if (!response.ok || !result.success) {
+          throw new Error("TRANSACTIONS_FETCH_FAILED");
+        }
+
+        if (!ignore) setTransactions(result.transactions.map(mapTransaction));
+      } catch {
+        if (!ignore) setTransactionsError("Impossible de charger les transactions pour le moment.");
+      } finally {
+        if (!ignore) setTransactionsLoading(false);
+      }
+    }
+
+    void loadTransactions();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   const account = useMemo(
-    () => accounts.find((item) => item.name === selectedAccount) ?? accounts[0],
-    [selectedAccount],
+    () => accounts.find((item) => item.id === selectedAccount) ?? accounts[0] ?? null,
+    [accounts, selectedAccount],
   );
 
   return (
@@ -232,8 +330,11 @@ export function DesktopAccounts() {
         </div>
 
         <div className="grid grid-cols-3 gap-5">
+          {accountsLoading ? <Card className="col-span-3 p-4 text-[14px] text-[#6B7280]">Chargement des comptes...</Card> : null}
+          {accountsError ? <Card className="col-span-3 p-4 text-[14px] text-[#DC2626]">{accountsError}</Card> : null}
+          {!accountsLoading && !accountsError && accounts.length === 0 ? <Card className="col-span-3 p-4 text-[14px] text-[#6B7280]">Aucun compte disponible.</Card> : null}
           {accounts.map((account) => (
-            <AccountCard key={account.name} account={account} active={selectedAccount === account.name} onSelect={() => setSelectedAccount(account.name)} />
+            <AccountCard key={account.id} account={account} active={selectedAccount === account.id} onSelect={() => setSelectedAccount(account.id)} />
           ))}
         </div>
 
@@ -241,12 +342,12 @@ export function DesktopAccounts() {
           <Card className="col-span-7 p-4">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-[16px] font-bold text-[#090927]">
-                Détails du {account.name.toLowerCase()}
+                {account ? `Détails du ${account.name.toLowerCase()}` : "Détails du compte"}
               </h2>
 
               <button
                 type="button"
-                onClick={() => setModal({ title: account.name, message: `Détail du compte pour ${account.name} (${account.iban}).` })}
+                onClick={() => account ? setModal({ title: account.name, message: `Détail du compte pour ${account.name} (${account.iban}).` }) : undefined}
                 className="flex h-8 items-center gap-2 rounded-[8px] border border-[#050033] px-3 text-[12px] font-semibold text-[#050033]"
               >
                 Voir les détails du compte
@@ -264,26 +365,26 @@ export function DesktopAccounts() {
                 </div>
 
                 <p className="mt-2 text-[26px] font-bold text-[#050033]">
-                  {account.balance}
+                  {account ? account.balance : "Solde indisponible"}
                 </p>
 
                 <div className="mt-4 space-y-3 text-[13px]">
                   <div>
                     <p className="text-[#6B7280]">IBAN</p>
                     <p className="mt-0.5 font-semibold text-[#090927]">
-                      {account.iban}
+                      {account?.iban ?? "IBAN indisponible"}
                     </p>
                   </div>
                   <div>
                     <p className="text-[#6B7280]">Titulaire du compte</p>
                     <p className="mt-0.5 font-semibold text-[#090927]">
-                      Frederico Di Mario
+                      {account?.holderName ?? "Frederico Di Mario"}
                     </p>
                   </div>
                   <div>
                     <p className="text-[#6B7280]">Type de compte</p>
                     <p className="mt-0.5 font-semibold text-[#090927]">
-                      {account.name}
+                      {account?.name ?? "Compte indisponible"}
                     </p>
                   </div>
                 </div>
@@ -408,6 +509,9 @@ export function DesktopAccounts() {
                 <span className="text-right">Statut</span>
               </div>
 
+              {transactionsLoading ? <div className="border-t border-[#E5E7EB] px-3 py-3 text-[13px] text-[#6B7280]">Chargement des transactions...</div> : null}
+              {transactionsError ? <div className="border-t border-[#E5E7EB] px-3 py-3 text-[13px] text-[#DC2626]">{transactionsError}</div> : null}
+              {!transactionsLoading && !transactionsError && transactions.length === 0 ? <div className="border-t border-[#E5E7EB] px-3 py-3 text-[13px] text-[#6B7280]">Aucune transaction disponible.</div> : null}
               {transactions.map((transaction, index) => {
                 const Icon = transaction.icon;
 

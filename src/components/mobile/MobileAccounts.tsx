@@ -1,10 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import {
   ArrowDown,
+  ArrowUp,
   CheckCircle2,
   ChevronRight,
   Download,
@@ -17,6 +18,110 @@ import Link from "next/link";
 import MobileShell from "./MobileShell";
 import DemoModal from "../shared/DemoModal";
 import DemoToast from "../shared/DemoToast";
+import type { SupabaseAccount, SupabaseTransaction } from "@/types/supabase";
+
+type AccountsApiResponse =
+  | { success: true; accounts: SupabaseAccount[] }
+  | { success: false; error: string };
+
+type TransactionsApiResponse =
+  | { success: true; transactions: SupabaseTransaction[] }
+  | { success: false; error: string };
+
+type AccountViewModel = {
+  id: string;
+  supabaseId: string;
+  name: string;
+  type: SupabaseAccount["type"];
+  iban: string;
+  balance: string;
+  rawBalance: number;
+  currency: SupabaseAccount["currency"];
+  icon: typeof Wallet;
+};
+
+type TransactionViewModel = {
+  id: string;
+  date: string;
+  time: string;
+  label: string;
+  category: string;
+  amount: string;
+  positive: boolean;
+  icon: typeof ArrowDown;
+};
+
+function formatCurrency(value: number | string, currency = "EUR") {
+  const amount = Number(value);
+
+  if (!Number.isFinite(amount)) return "Montant indisponible";
+
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency,
+  }).format(amount);
+}
+
+function formatSignedCurrency(value: number | string, direction: SupabaseTransaction["direction"], currency = "EUR") {
+  const amount = Math.abs(Number(value));
+
+  if (!Number.isFinite(amount)) return "Montant indisponible";
+
+  return `${direction === "credit" ? "+" : "-"} ${formatCurrency(amount, currency)}`;
+}
+
+function formatDate(value: string) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return "--:--";
+  return value.slice(0, 5);
+}
+
+function maskIban(iban: string) {
+  const clean = iban.replace(/\s+/g, "");
+  if (clean.length < 8) return iban;
+
+  return `${clean.slice(0, 4)} •••• •••• ${clean.slice(-4)}`;
+}
+
+function getAccountIcon(account: Pick<SupabaseAccount, "code" | "type">) {
+  return account.code === "joint" || account.type === "joint" ? Users : Wallet;
+}
+
+function mapAccount(account: SupabaseAccount): AccountViewModel {
+  const rawBalance = Number(account.available_balance ?? account.balance);
+
+  return {
+    id: account.code,
+    supabaseId: account.id,
+    name: account.name,
+    type: account.type,
+    iban: maskIban(account.iban),
+    balance: formatCurrency(rawBalance, account.currency),
+    rawBalance: Number.isFinite(rawBalance) ? rawBalance : 0,
+    currency: account.currency,
+    icon: getAccountIcon(account),
+  };
+}
+
+function mapTransaction(transaction: SupabaseTransaction): TransactionViewModel {
+  return {
+    id: transaction.id || transaction.reference || `${transaction.transaction_date}-${transaction.transaction_time}`,
+    date: formatDate(transaction.transaction_date),
+    time: formatTime(transaction.transaction_time),
+    label: transaction.label,
+    category: transaction.category ?? "Opération",
+    amount: formatSignedCurrency(transaction.amount, transaction.direction, transaction.currency),
+    positive: transaction.direction === "credit",
+    icon: transaction.direction === "credit" ? ArrowDown : ArrowUp,
+  };
+}
 
 function MobileCard({
   children,
@@ -36,84 +141,82 @@ function MobileCard({
 
 export function MobileAccounts() {
   const { t } = useLanguage();
+  const [accounts, setAccounts] = useState<AccountViewModel[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState("");
+  const [transactions, setTransactions] = useState<TransactionViewModel[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [transactionsError, setTransactionsError] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState("current");
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
   const [toast, setToast] = useState("");
 
-  const accounts = useMemo(() => [
-    {
-      id: "current",
-      name: t("accounts.current"),
-      iban: "LU12 •••• •••• 9000",
-      balance: "84.320,00 €",
-      icon: Wallet,
-    },
-    {
-      id: "savings",
-      name: t("accounts.savings"),
-      iban: "LU34 •••• •••• 1000",
-      balance: "185.680,00 €",
-      icon: Wallet,
-    },
-    {
-      id: "joint",
-      name: t("accounts.joint"),
-      iban: "LU78 •••• •••• 9000",
-      balance: "30.000,00 €",
-      icon: Users,
-    },
-  ], [t]);
+  useEffect(() => {
+    let ignore = false;
 
-  const transactions = useMemo(() => [
-    {
-      date: "15 juillet 2022",
-      time: "14:37",
-      label: t("transactions.italianTransfer"),
-      category: t("transactions.internationalTransfer"),
-      amount: "+ 18.750,00 €",
-      positive: true,
-      icon: ArrowDown,
-    },
-    {
-      date: "15 janvier 2022",
-      time: "09:18",
-      label: t("transactions.italianTransfer"),
-      category: t("transactions.internationalTransfer"),
-      amount: "+ 18.750,00 €",
-      positive: true,
-      icon: ArrowDown,
-    },
-    {
-      date: "15 juillet 2021",
-      time: "16:05",
-      label: t("transactions.italianTransfer"),
-      category: t("transactions.internationalTransfer"),
-      amount: "+ 18.750,00 €",
-      positive: true,
-      icon: ArrowDown,
-    },
-    {
-      date: "15 janvier 2021",
-      time: "10:42",
-      label: t("transactions.italianTransfer"),
-      category: t("transactions.internationalTransfer"),
-      amount: "+ 18.750,00 €",
-      positive: true,
-      icon: ArrowDown,
-    },
-    {
-      date: "15 juillet 2020",
-      time: "13:26",
-      label: t("transactions.italianTransfer"),
-      category: t("transactions.internationalTransfer"),
-      amount: "+ 18.750,00 €",
-      positive: true,
-      icon: ArrowDown,
-    },
-  ], [t]);
+    async function loadAccounts() {
+      setAccountsLoading(true);
+      setAccountsError("");
+
+      try {
+        const response = await fetch("/api/accounts");
+        const result = (await response.json()) as AccountsApiResponse;
+
+        if (!response.ok || !result.success) {
+          throw new Error("ACCOUNTS_FETCH_FAILED");
+        }
+
+        if (!ignore) {
+          const nextAccounts = result.accounts.map(mapAccount);
+          setAccounts(nextAccounts);
+          setSelectedAccountId((current) => nextAccounts.some((item) => item.id === current) ? current : nextAccounts[0]?.id ?? "");
+        }
+      } catch {
+        if (!ignore) setAccountsError("Impossible de charger les comptes pour le moment.");
+      } finally {
+        if (!ignore) setAccountsLoading(false);
+      }
+    }
+
+    void loadAccounts();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadTransactions() {
+      setTransactionsLoading(true);
+      setTransactionsError("");
+
+      try {
+        const response = await fetch("/api/transactions");
+        const result = (await response.json()) as TransactionsApiResponse;
+
+        if (!response.ok || !result.success) {
+          throw new Error("TRANSACTIONS_FETCH_FAILED");
+        }
+
+        if (!ignore) setTransactions(result.transactions.map(mapTransaction));
+      } catch {
+        if (!ignore) setTransactionsError("Impossible de charger les transactions pour le moment.");
+      } finally {
+        if (!ignore) setTransactionsLoading(false);
+      }
+    }
+
+    void loadTransactions();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const selectedAccount = useMemo(
-    () => accounts.find((item) => item.id === selectedAccountId) ?? accounts[0],
+    () => accounts.find((item) => item.id === selectedAccountId) ?? accounts[0] ?? null,
     [selectedAccountId, accounts],
   );
 
@@ -135,16 +238,19 @@ export function MobileAccounts() {
             {t("accounts.availableBalance")}
           </p>
           <p className="mt-2 text-[28px] font-bold tracking-tight text-[#050033]">
-            {selectedAccount.balance}
+            {accountsLoading ? "Chargement des comptes..." : selectedAccount?.balance ?? "Solde indisponible"}
           </p>
           <p className="mt-0.5 text-[12px] text-[#6B7280]">
-            {selectedAccount.name} — {selectedAccount.iban}
+            {accountsError || (selectedAccount ? `${selectedAccount.name} — ${selectedAccount.iban}` : "Aucun compte disponible.")}
           </p>
         </MobileCard>
 
         <MobileCard className="p-3">
+          {accountsError ? <p className="px-1 pb-2 text-[12px] text-[#DC2626]">{accountsError}</p> : null}
           <div className="-mx-1 overflow-x-auto px-1 pb-1 scrollbar-hide">
             <div className="flex gap-2.5">
+            {accountsLoading ? <p className="px-1 py-3 text-[13px] text-[#6B7280]">Chargement des comptes...</p> : null}
+            {!accountsLoading && !accountsError && accounts.length === 0 ? <p className="px-1 py-3 text-[13px] text-[#6B7280]">Aucun compte disponible.</p> : null}
             {accounts.map((accountItem) => {
               const Icon = accountItem.icon;
               const isSelected = selectedAccountId === accountItem.id;
@@ -307,6 +413,9 @@ export function MobileAccounts() {
               </button>
             );
           })}
+          {transactionsLoading ? <p className="border-b border-[#E5E7EB] py-2.5 text-[13px] text-[#6B7280]">Chargement des transactions...</p> : null}
+          {transactionsError ? <p className="border-b border-[#E5E7EB] py-2.5 text-[13px] text-[#DC2626]">{transactionsError}</p> : null}
+          {!transactionsLoading && !transactionsError && transactions.length === 0 ? <p className="border-b border-[#E5E7EB] py-2.5 text-[13px] text-[#6B7280]">Aucune transaction disponible.</p> : null}
         </MobileCard>
 
         <MobileCard className="p-3">

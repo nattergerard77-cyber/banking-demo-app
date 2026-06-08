@@ -8,6 +8,11 @@ export type SupabaseAccount = {
   balance: number;
   available_balance: number;
   status: "active" | "blocked" | "closed";
+  holder_name?: string;
+  holder_email?: string | null;
+  display_order?: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type SupabaseBeneficiary = {
@@ -21,4 +26,27 @@ export type SupabaseBeneficiary = {
   initials?: string | null;
   favorite: boolean;
   active: boolean;
+};
+
+export type SupabaseTransaction = {
+  id: string;
+  account_id: string;
+  transfer_id?: string | null;
+  reference?: string | null;
+  label: string;
+  merchant?: string | null;
+  category?: string | null;
+  amount: number | string;
+  currency: "EUR";
+  direction: "credit" | "debit";
+  status: "pending" | "executed" | "cancelled";
+  transaction_date: string;
+  transaction_time?: string | null;
+  iban?: string | null;
+  bank?: string | null;
+  sender_iban?: string | null;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
 };
