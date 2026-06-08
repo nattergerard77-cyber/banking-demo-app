@@ -1,0 +1,221 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-navy-main: #050033;
+  --color-navy: #050033;
+  --color-navy-secondary: #090927;
+  --color-green-accent: #9ACD00;
+  --color-green-light: #EEF7D8;
+  --color-global: #F6F7F9;
+  --color-app-bg: #F6F7F9;
+  --color-card: #FFFFFF;
+  --color-border: #E5E7EB;
+  --color-main: #090927;
+  --color-text-primary: #090927;
+  --color-secondary: #6B7280;
+  --color-text-secondary: #6B7280;
+  --color-muted: #9CA3AF;
+  --color-text-muted: #9CA3AF;
+  --color-success: #7AA600;
+  --color-error: #DC2626;
+  --color-warning: #F59E0B;
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@layer utilities {
+  .interactive-card {
+    transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+    cursor: pointer;
+  }
+  .interactive-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 42px rgba(10, 7, 45, 0.10);
+    border-color: rgba(145, 204, 0, 0.45);
+  }
+  .interactive-card:active {
+    transform: translateY(-1px) scale(0.99);
+  }
+  .interactive-card:focus-visible {
+    outline: 3px solid rgba(145, 204, 0, 0.35);
+    outline-offset: 3px;
+  }
+  .interactive-card:hover .arrow-icon {
+    transform: translateX(4px);
+    transition: transform 0.22s ease;
+  }
+
+  .interactive-button {
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+    cursor: pointer;
+  }
+  .interactive-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(10, 7, 45, 0.08);
+  }
+  .interactive-button:active {
+    transform: translateY(0) scale(0.98);
+  }
+  .interactive-button:focus-visible {
+    outline: 3px solid rgba(145, 204, 0, 0.35);
+    outline-offset: 2px;
+  }
+
+  .interactive-link {
+    transition: color 0.18s ease, text-decoration-color 0.18s ease;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .interactive-link:hover,
+  .interactive-link:focus-visible {
+    color: var(--color-green-accent);
+    text-decoration: underline;
+    text-decoration-color: var(--color-green-accent);
+  }
+  .interactive-link:active {
+    transform: scale(0.98);
+  }
+  .interactive-link:focus-visible {
+    outline: 3px solid rgba(145, 204, 0, 0.35);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .interactive-link:hover .arrow-icon {
+    transform: translateX(4px);
+    transition: transform 0.18s ease;
+  }
+
+  .interactive-row {
+    transition: background-color 0.18s ease;
+    cursor: pointer;
+  }
+  .interactive-row:hover {
+    background-color: var(--color-global);
+  }
+  .interactive-row:active {
+    background-color: #f0f1f3;
+  }
+  .interactive-row:hover .arrow-icon {
+    transform: translateX(4px);
+    transition: transform 0.18s ease;
+  }
+  .interactive-row:focus-visible {
+    outline: 3px solid rgba(145, 204, 0, 0.35);
+    outline-offset: -2px;
+  }
+}
+
+html.dark {
+  --color-global: #0b0b16;
+  --color-app-bg: #0b0b16;
+  --color-card: #121626;
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-main: #f8fafc;
+  --color-text-primary: #f8fafc;
+  --color-secondary: #aab0c0;
+  --color-text-secondary: #aab0c0;
+  --color-muted: #8f97aa;
+  --color-text-muted: #8f97aa;
+  --color-navy: #1f2a44;
+  --color-navy-main: #1f2a44;
+  --color-navy-secondary: #27324f;
+}
+
+html.dark,
+html.dark body {
+  background: #0b0b16;
+  color: #f8fafc;
+}
+
+html.dark .bg-global,
+html.dark .bg-app-bg {
+  background-color: #0b0b16 !important;
+}
+
+html.dark .bg-card,
+html.dark .bg-white,
+html.dark [class*="bg-\[\#F6F7F9\]"],
+html.dark [class*="bg-\[\#F3F4F6\]"],
+html.dark [class*="bg-\[\#FBFFF1\]"] {
+  background-color: #151a2c !important;
+}
+
+html.dark [class*="bg-\[\#EEF7D8\]"] {
+  background-color: #1c2a18 !important;
+}
+
+html.dark .border-border,
+html.dark [class*="border-\[\#E5E7EB\]"] {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html.dark .text-main,
+html.dark .text-text-primary,
+html.dark .text-navy,
+html.dark [class*="text-\[\#090927\]"],
+html.dark [class*="text-\[\#050033\]"] {
+  color: #f8fafc !important;
+}
+
+html.dark .text-text-secondary,
+html.dark .text-text-muted,
+html.dark [class*="text-\[\#6B7280\]"],
+html.dark [class*="text-\[\#9CA3AF\]"] {
+  color: #aab0c0 !important;
+}
+
+html.dark .bg-navy,
+html.dark [class*="bg-\[\#050033\]"],
+html.dark [class*="bg-\[\#090927\]"] {
+  background-color: #1f2a44 !important;
+}
+
+html.dark .hover\:bg-gray-50:hover {
+  background-color: #1a2238 !important;
+}
+
+html.dark .shadow-2xl,
+html.dark .shadow-xl,
+html.dark [class*="shadow-"] {
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.38) !important;
+}
+
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: #10182a !important;
+  color: #f8fafc !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+html.dark ::placeholder {
+  color: #8891a4 !important;
+}
+
+html.dark .interactive-row:hover {
+  background-color: #1a2238 !important;
+}
+
+html.dark header,
+html.dark nav {
+  background-color: #111827 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* ── Transfer sheet animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}

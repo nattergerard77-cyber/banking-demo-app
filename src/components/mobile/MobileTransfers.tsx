@@ -1,0 +1,445 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { ArrowRight, Building2, Check, CheckCircle2, ChevronRight, Clock3, CreditCard, Download, Euro, FileText, Plus, ShieldCheck, User, Wallet, X, Zap } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
+import { useNotifications } from "@/context/NotificationContext";
+import { useMessages } from "@/context/MessageContext";
+import { generateTransferPdf } from "@/utils/generateTransferPdf";
+import {
+  sendBeneficiaryTransferEmail,
+  type EmailStatus,
+} from "@/utils/sendBeneficiaryTransferEmail";
+
+import MobileShell from "./MobileShell";
+import DemoSwitch from "../shared/DemoSwitch";
+import DemoToast from "../shared/DemoToast";
+
+type Beneficiary = { id: string; name: string; type: string; iban: string; bank: string; email: string; phone: string; initials: string };
+type TransferItem = { id: string; beneficiary: string; date: string; reason: string; amount: string; status: string; reference: string };
+
+function parseAmount(value: string) { const p = Number.parseFloat(value.replace(/\s/g, "").replace(",", ".")); return Number.isFinite(p) ? p : 0; }
+function parseBalance(value: string) { return Number.parseFloat(value.replace(/\s/g, "").replace("EUR", "").replace(/\./g, "").replace(",", ".")); }
+function formatAmount(value: string) { return `${parseAmount(value).toFixed(2).replace(".", ",")} EUR`; }
+function maskIban(iban: string) { const c = iban.replace(/\s+/g, ""); return `${c.slice(0, 4)} ${c.slice(4, 8)} **** **** ${c.slice(-4)}`; }
+function generateTransferReference() { const n = new Date(); return `VIR-${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, "0")}${String(n.getDate()).padStart(2, "0")}-${String(n.getHours()).padStart(2, "0")}${String(n.getMinutes()).padStart(2, "0")}-${String(Math.floor(Math.random() * 9000) + 1000)}`; }
+function generateTemporaryReference() { const n = new Date(); return `VR-${String(n.getFullYear()).slice(-2)}${String(n.getMonth() + 1).padStart(2, "0")}${String(n.getDate()).padStart(2, "0")}-${String(Math.floor(Math.random() * 9000) + 1000)}`; }
+function todayInputValue() { return new Date().toISOString().slice(0, 10); }
+function formatExecutionDate(value: string) { if (!value) return "Aujourd'hui"; return new Date(`${value}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }); }
+
+function Card({ children, className = "" }: { children: ReactNode; className?: string }) { return <div className={`rounded-[18px] border border-[#E5E7EB] bg-white shadow-[0_10px_26px_rgba(5,0,51,0.07)] ${className}`}>{children}</div>; }
+
+export default function MobileTransfers() {
+  const { t } = useLanguage();
+  const { addTransferNotification } = useNotifications();
+  const { addTransferMessage } = useMessages();
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([
+    { id: "luca", name: "Luca Romano", type: t("beneficiaries.particulier"), iban: "IT60 X054 2811 1010 0000 0123 456", bank: "Istituto Bancario Italiano", email: "luca.romano@example.com", phone: "+39 345 812 4470", initials: "LR" },
+    { id: "sofia", name: "Sofia Bianchi", type: t("beneficiaries.particulier"), iban: "IT29 P030 6909 6061 0000 0123 789", bank: "Banco di Roma", email: "sofia.bianchi@example.com", phone: "+39 333 604 2198", initials: "SB" },
+    { id: "marco", name: "Marco Conti", type: t("beneficiaries.particulier"), iban: "IT12 A020 0814 2500 0103 4567 890", bank: "Banca Nazionale Italiana", email: "marco.conti@example.com", phone: "+39 347 920 1186", initials: "MC" },
+  ]);
+  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState("luca");
+  const [selectedDebitAccountId, setSelectedDebitAccountId] = useState("current");
+  const [selectedTransferTypeId, setSelectedTransferTypeId] = useState("instant");
+  const [amount, setAmount] = useState("120");
+  const [reason, setReason] = useState("Règlement privé");
+  const [scheduledDate, setScheduledDate] = useState(todayInputValue());
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [amountError, setAmountError] = useState("");
+  const [dateError, setDateError] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [newBeneficiary, setNewBeneficiary] = useState({ name: "", iban: "", bank: "", email: "", phone: "" });
+  const [addErrors, setAddErrors] = useState<Record<string, string>>({});
+  const [showRecap, setShowRecap] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showDetail, setShowDetail] = useState<TransferItem | null>(null);
+  const [showAccountPicker, setShowAccountPicker] = useState(false);
+  const [showTypePicker, setShowTypePicker] = useState(false);
+  const [toast, setToast] = useState("");
+  const [validatedAt, setValidatedAt] = useState<Date | null>(null);
+  const [temporaryReference, setTemporaryReference] = useState("");
+  const [finalReference, setFinalReference] = useState("");
+  const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
+  const [emailError, setEmailError] = useState<string | null>(null);
+
+  const debitAccounts = useMemo(() => [
+    { id: "current", name: t("accounts.current"), balance: "84.320,00 EUR", iban: "LU88 0019 2450 1234 5678", last4: "5678" },
+    { id: "savings", name: t("accounts.savings"), balance: "185.680,00 EUR", iban: "LU44 0019 8800 2040 3301", last4: "3301" },
+    { id: "joint", name: t("accounts.joint"), balance: "30.000,00 EUR", iban: "LU76 0019 5520 7788 1140", last4: "1140" },
+  ], [t]);
+
+  const transferTypes = useMemo(() => [
+    { id: "instant", label: t("transfers.types.instant"), description: t("transfers.types.instantDesc") },
+    { id: "scheduled", label: t("transfers.types.scheduled"), description: t("transfers.types.scheduledDesc") },
+    { id: "recurring", label: t("transfers.types.permanent"), description: t("transfers.types.permanentDesc") },
+  ], [t]);
+
+  const [now] = useState(() => Date.now());
+  const recentTransfers = useMemo(() => [
+    { id: "tx-1", beneficiary: "Luca Romano", date: new Date(now).toLocaleDateString("fr-FR"), reason: "Règlement privé", amount: "120", status: t("transactions.executed"), reference: "VR-260529-1274" },
+    { id: "tx-2", beneficiary: "Sofia Bianchi", date: new Date(now - 2 * 86400000).toLocaleDateString("fr-FR"), reason: t("transactions.gift"), amount: "75", status: t("transactions.executed"), reference: "VR-260527-9038" },
+    { id: "tx-3", beneficiary: "Marco Conti", date: new Date(now - 5 * 86400000).toLocaleDateString("fr-FR"), reason: t("transactions.invoice"), amount: "450", status: t("transactions.planned"), reference: "VR-260524-4417" },
+  ], [t, now]);
+
+  const selectedBeneficiary = useMemo(() => beneficiaries.find((b) => b.id === selectedBeneficiaryId) ?? beneficiaries[0], [selectedBeneficiaryId, beneficiaries]);
+  const selectedDebitAccount = useMemo(() => debitAccounts.find((a) => a.id === selectedDebitAccountId) ?? debitAccounts[0], [selectedDebitAccountId, debitAccounts]);
+  const selectedTransferType = useMemo(() => transferTypes.find((item) => item.id === selectedTransferTypeId) ?? transferTypes[0], [selectedTransferTypeId, transferTypes]);
+  const totalFormatted = formatAmount(amount);
+  const executionDate = selectedTransferTypeId === "scheduled" ? formatExecutionDate(scheduledDate) : t("common.today");
+
+  function selectTransferType(typeId: string) { resetEmailForNewTransfer(); setSelectedTransferTypeId(typeId); setIsRecurring(typeId === "recurring"); if (typeId === "scheduled" && !scheduledDate) setScheduledDate(todayInputValue()); setShowTypePicker(false); }
+
+  function openRecap() {
+    const parsedAmount = parseAmount(amount);
+    if (!amount.trim() || parsedAmount <= 0) { setAmountError(t("transfers.errors.invalidAmount")); return; }
+    if (parsedAmount > parseBalance(selectedDebitAccount.balance)) { setAmountError(t("transfers.errors.amountExceedsBalance")); return; }
+    if (selectedTransferTypeId === "scheduled" && (!scheduledDate || scheduledDate < todayInputValue())) { setDateError(t("transfers.errors.invalidExecutionDate")); return; }
+    setAmountError(""); setDateError(""); if (!temporaryReference) setTemporaryReference(generateTemporaryReference()); setShowRecap(true);
+  }
+
+  function addBeneficiary() {
+    const errors: Record<string, string> = {};
+    if (!newBeneficiary.name.trim()) errors.name = t("transfers.errors.requiredName");
+    if (!newBeneficiary.iban.trim()) errors.iban = t("transfers.errors.requiredIban");
+    if (!newBeneficiary.bank.trim()) errors.bank = t("transfers.errors.requiredBank");
+    if (!newBeneficiary.email.trim()) errors.email = t("transfers.errors.requiredEmail");
+    if (newBeneficiary.email.trim() && !newBeneficiary.email.includes("@")) errors.email = t("transfers.errors.invalidEmail");
+    if (!newBeneficiary.phone.trim()) errors.phone = t("transfers.errors.requiredPhone");
+    setAddErrors(errors);
+    if (Object.keys(errors).length) return;
+    const nextId = `benef-${Date.now()}`;
+    const initials = newBeneficiary.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "NB";
+    const added = { id: nextId, name: newBeneficiary.name.trim(), type: t("beneficiaries.particulier"), iban: newBeneficiary.iban.trim(), bank: newBeneficiary.bank.trim(), email: newBeneficiary.email.trim(), phone: newBeneficiary.phone.trim(), initials };
+    setBeneficiaries((current) => [added, ...current]);
+    setSelectedBeneficiaryId(nextId);
+    setShowAdd(false);
+    setNewBeneficiary({ name: "", iban: "", bank: "", email: "", phone: "" });
+    setAddErrors({});
+    setToast(t("transfers.beneficiaryAdded"));
+  }
+
+  function resetEmailNotice() { setEmailStatus("idle"); setEmailError(null); }
+
+  function resetEmailForNewTransfer() { resetEmailNotice(); setFinalReference(""); }
+
+  function sendBeneficiaryNotice(reference: string, validationDate: Date) {
+    if (emailStatus === "sending" || emailStatus === "sent") return;
+    if (!selectedBeneficiary.email.trim()) { setEmailStatus("failed"); setEmailError(t("transfers.emailNotice.missingEmail")); return; }
+    setEmailStatus("sending"); setEmailError(null);
+    void sendBeneficiaryTransferEmail({ beneficiaryEmail: selectedBeneficiary.email, beneficiaryName: selectedBeneficiary.name, beneficiaryBank: selectedBeneficiary.bank, beneficiaryIban: selectedBeneficiary.iban, amount: totalFormatted, reference, executionDate, validationDate: validationDate.toLocaleDateString("fr-FR"), validationTime: validationDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), reason, ordererName: "Frederico Di Mario" }).then((result) => { setEmailStatus(result.status); setEmailError(result.error ?? null); });
+  }
+
+  function validate() { const validationDate = new Date(); const reference = finalReference || generateTransferReference(); setValidatedAt(validationDate); setFinalReference(reference); setShowRecap(false); setShowSuccess(true); addTransferNotification({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference }); addTransferMessage({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference, accountName: selectedDebitAccount.name, executionDate, validationDate: validationDate.toLocaleDateString("fr-FR"), validationTime: validationDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) }); sendBeneficiaryNotice(reference, validationDate); }
+
+  function downloadReceipt() {
+    const receiptDate = validatedAt ?? new Date();
+    try {
+      generateTransferPdf({
+        holderName: "Frederico Di Mario",
+        holderEmail: "fredericodimario8@gmail.com",
+        debitAccountName: selectedDebitAccount.name,
+        debitIban: selectedDebitAccount.iban,
+        beneficiaryName: selectedBeneficiary.name,
+        beneficiaryBank: selectedBeneficiary.bank,
+        beneficiaryIban: selectedBeneficiary.iban,
+        transferType: selectedTransferType.label,
+        executionDate,
+        validationDate: receiptDate.toLocaleDateString("fr-FR"),
+        validationTime: receiptDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+        temporaryReference,
+        finalReference,
+        reason,
+        amount: totalFormatted,
+        fees: "0,00 EUR",
+        total: totalFormatted,
+      });
+    } catch {
+      const content = [`Recu de virement`, `Reference: ${finalReference}`, `Date: ${receiptDate.toLocaleDateString("fr-FR")}`, `Heure: ${receiptDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`, `Compte debite: ${selectedDebitAccount.name}`, `IBAN compte debite: ${selectedDebitAccount.iban}`, `Type de virement: ${selectedTransferType.label}`, `Date d'execution: ${executionDate}`, `Beneficiaire: ${selectedBeneficiary.name}`, `Banque: ${selectedBeneficiary.bank}`, `IBAN beneficiaire: ${selectedBeneficiary.iban}`, `Montant: ${totalFormatted}`, `Frais: 0,00 EUR`, `Total: ${totalFormatted}`, `Motif: ${reason || "-"}`].join("\n");
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `recu-virement-${finalReference || "virement"}.txt`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+  }
+
+  return (
+    <>
+      <MobileShell>
+        <div className="space-y-4 pb-6">
+          <section><h1 className="text-[24px] font-bold text-[#090927]">{t("transfers.title")}</h1></section>
+          <Card className="p-4">
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3"><button type="button" onClick={() => setShowAdd(true)} className="flex h-11 items-center justify-center gap-2 rounded-[10px] border border-[#050033]"><Plus size={16} />{t("transfers.newBeneficiary")}</button><Link href="/virements/direct" className="flex h-11 items-center justify-center gap-2 rounded-[10px] bg-[#050033] text-white"><Zap size={16} />{t("transfers.directTransfer")}</Link></div>
+              <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("transfers.debitAccount")}</label><button type="button" onClick={() => setShowAccountPicker(true)} className="flex h-11 w-full items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[14px] font-semibold text-[#090927]"><Wallet size={18} />{selectedDebitAccount.name} - {selectedDebitAccount.balance}<ChevronRight size={16} className="ml-auto" /></button></div>
+              <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("common.type")}</label><button type="button" onClick={() => setShowTypePicker(true)} className="flex h-11 w-full items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[14px] font-semibold text-[#090927]"><Clock3 size={16} />{selectedTransferType.label}</button></div>
+              {selectedTransferTypeId === "scheduled" ? <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("transfers.executionDate")}</label><input type="date" min={todayInputValue()} value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] outline-none" />{dateError ? <p className="mt-1 text-[12px] text-[#DC2626]">{dateError}</p> : null}</div> : null}
+              <div className="flex gap-2 overflow-auto">{beneficiaries.map((b) => <button key={b.id} type="button" onClick={() => { resetEmailForNewTransfer(); setSelectedBeneficiaryId(b.id); }} className={`rounded-[13px] border px-3 py-2 ${selectedBeneficiaryId === b.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB]"}`}>{b.name}</button>)}</div>
+              <div><div className="flex h-11 items-center gap-3 rounded-[10px] border border-[#E5E7EB] px-3"><Euro size={16} /><input value={amount} onChange={(e) => setAmount(e.target.value)} className="flex-1 outline-none" /><span className="text-[12px] text-[#6B7280]">EUR</span></div>{amountError ? <p className="mt-1 text-[12px] text-[#DC2626]">{amountError}</p> : null}</div>
+              <div className="flex h-11 items-center gap-3 rounded-[10px] border border-[#E5E7EB] px-3"><FileText size={16} /><input value={reason} onChange={(e) => setReason(e.target.value)} className="flex-1 outline-none" /></div>
+              <div className="flex items-center justify-between rounded-[14px] bg-[#F6F7F9] p-3"><span className="font-semibold">{t("transfers.recurring")}</span><DemoSwitch checked={isRecurring} onChange={setIsRecurring} label={t("common.enable")} /></div>
+            </div>
+          </Card>
+          <Card className="p-4"><div className="space-y-2 text-[14px]"><p className="flex justify-between"><span>{t("transfers.debitAccount")}</span><span>{selectedDebitAccount.name} - {selectedDebitAccount.last4}</span></p><p className="flex justify-between"><span>{t("transfers.beneficiary")}</span><span>{selectedBeneficiary.name}</span></p><p className="flex justify-between"><span>{t("common.amount")}</span><span>{totalFormatted}</span></p><p className="flex justify-between"><span>{t("common.date")}</span><span>{executionDate}</span></p></div><button type="button" onClick={openRecap} className="mt-4 h-11 w-full rounded-[10px] bg-[#050033] text-white">{t("common.continueBtn")}</button></Card>
+          <Card className="p-4"><h2 className="font-bold">{t("transfers.recent")}</h2>{recentTransfers.map((item) => <button key={item.id} type="button" onClick={() => setShowDetail(item)} className="flex w-full items-center justify-between py-2 text-left"><span>{item.beneficiary}</span><span>- {formatAmount(item.amount)}</span></button>)}</Card>
+        </div>
+      </MobileShell>
+
+      {showAdd ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4"><div className="flex items-center justify-between"><h2 className="text-[18px] font-bold">{t("transfers.newBeneficiary")}</h2><button type="button" onClick={() => setShowAdd(false)}><X size={18} /></button></div><div className="mt-3 space-y-3"><input placeholder={t("transfers.fullName")} value={newBeneficiary.name} onChange={(e) => setNewBeneficiary((c) => ({ ...c, name: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3" />{addErrors.name ? <p className="text-[12px] text-[#DC2626]">{addErrors.name}</p> : null}<input placeholder="IBAN" value={newBeneficiary.iban} onChange={(e) => setNewBeneficiary((c) => ({ ...c, iban: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3" />{addErrors.iban ? <p className="text-[12px] text-[#DC2626]">{addErrors.iban}</p> : null}<input placeholder={t("common.bank")} value={newBeneficiary.bank} onChange={(e) => setNewBeneficiary((c) => ({ ...c, bank: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3" />{addErrors.bank ? <p className="text-[12px] text-[#DC2626]">{addErrors.bank}</p> : null}<input placeholder="Email" value={newBeneficiary.email} onChange={(e) => setNewBeneficiary((c) => ({ ...c, email: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3" />{addErrors.email ? <p className="text-[12px] text-[#DC2626]">{addErrors.email}</p> : null}<input placeholder={t("transfers.phone")} value={newBeneficiary.phone} onChange={(e) => setNewBeneficiary((c) => ({ ...c, phone: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3" />{addErrors.phone ? <p className="text-[12px] text-[#DC2626]">{addErrors.phone}</p> : null}<button type="button" onClick={addBeneficiary} className="h-11 w-full rounded-[10px] bg-[#050033] text-white">{t("beneficiaries.add")}</button></div></div></div> : null}
+      {/* ── RECAP PREMIUM BOTTOM SHEET ── */}
+      {showRecap ? (
+        <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/50 backdrop-blur-[2px]" style={{ animation: 'fadeIn .25s ease' }}>
+          <div className="w-full max-h-[92vh] overflow-y-auto rounded-t-[24px] bg-[#F8F9FB] pb-6 shadow-[0_-8px_40px_rgba(5,0,51,0.18)]" style={{ animation: 'slideUp .3s cubic-bezier(.22,1,.36,1)' }}>
+            {/* Drag handle */}
+            <div className="sticky top-0 z-10 flex justify-center bg-[#F8F9FB] pt-3 pb-1 rounded-t-[24px]">
+              <div className="h-[5px] w-10 rounded-full bg-[#D1D5DB]" />
+            </div>
+
+            <div className="px-5">
+              {/* Header */}
+              <div className="flex flex-col items-center pt-2 pb-5">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#B8E63C] to-[#7AA600] shadow-[0_4px_14px_rgba(122,166,0,0.3)]">
+                  <ShieldCheck size={24} className="text-white" />
+                </div>
+                <h2 className="mt-3 text-[20px] font-bold tracking-tight text-[#090927]">Récapitulatif du virement</h2>
+                <p className="mt-1 text-[13px] text-[#6B7280]">Vérifiez les informations avant validation</p>
+              </div>
+
+              {/* Section 1 — Compte débité */}
+              <div className="mb-3 rounded-[16px] border border-[#E5E7EB] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#050033]/[0.06]">
+                    <CreditCard size={14} className="text-[#050033]" />
+                  </div>
+                  <span className="text-[13px] font-semibold uppercase tracking-wide text-[#6B7280]">{t("transfers.debitAccount")}</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[14px] font-semibold text-[#090927]">{selectedDebitAccount.name}</span>
+                    <span className="rounded-full bg-[#EEF7D8] px-2.5 py-0.5 text-[12px] font-medium text-[#7AA600]">{selectedDebitAccount.balance}</span>
+                  </div>
+                  <p className="text-[13px] text-[#6B7280] tracking-wide font-mono">{selectedDebitAccount.iban}</p>
+                </div>
+              </div>
+
+              {/* Section 2 — Bénéficiaire */}
+              <div className="mb-3 rounded-[16px] border border-[#E5E7EB] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#050033]/[0.06]">
+                    <User size={14} className="text-[#050033]" />
+                  </div>
+                  <span className="text-[13px] font-semibold uppercase tracking-wide text-[#6B7280]">{t("transfers.beneficiary")}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#050033] to-[#1a1a5e] text-[14px] font-bold text-white shadow-sm">
+                    {selectedBeneficiary.initials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-semibold text-[#090927]">{selectedBeneficiary.name}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <Building2 size={12} className="shrink-0 text-[#9CA3AF]" />
+                      <span className="text-[13px] text-[#6B7280] truncate">{selectedBeneficiary.bank}</span>
+                    </div>
+                    <p className="mt-1 text-[12px] text-[#9CA3AF] font-mono tracking-wide truncate">{selectedBeneficiary.iban}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3 — Détails du virement */}
+              <div className="mb-3 rounded-[16px] border border-[#E5E7EB] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#050033]/[0.06]">
+                    <FileText size={14} className="text-[#050033]" />
+                  </div>
+                  <span className="text-[13px] font-semibold uppercase tracking-wide text-[#6B7280]">Détails du virement</span>
+                </div>
+
+                {/* Amount highlight */}
+                <div className="mb-3 rounded-[12px] bg-gradient-to-r from-[#F8F9FB] to-[#EEF7D8]/60 p-3 text-center">
+                  <p className="text-[12px] font-medium text-[#6B7280] mb-0.5">{t("common.amount")}</p>
+                  <p className="text-[26px] font-extrabold tracking-tight text-[#090927]">{totalFormatted}</p>
+                </div>
+
+                <div className="space-y-0">
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("transfers.fees")}</span>
+                    <span className="text-[13px] font-medium text-[#7AA600]">0,00 EUR</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] font-semibold text-[#090927]">{t("transfers.total")}</span>
+                    <span className="text-[15px] font-bold text-[#090927]">{totalFormatted}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("common.reason")}</span>
+                    <span className="text-[13px] font-medium text-[#090927] text-right max-w-[55%] truncate">{reason || "-"}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("common.type")}</span>
+                    <span className="text-[13px] font-medium text-[#090927]">{selectedTransferType.label}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("transfers.executionDate")}</span>
+                    <span className="text-[13px] font-medium text-[#090927]">{executionDate}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("transfers.tempRef")}</span>
+                    <span className="text-[12px] font-mono text-[#9CA3AF]">{temporaryReference}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* CTA Buttons */}
+              <div className="mt-4 grid grid-cols-2 gap-3 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRecap(false)}
+                  className="flex h-[50px] items-center justify-center rounded-[14px] border-2 border-[#050033]/20 text-[15px] font-semibold text-[#050033] transition-all active:scale-[0.97]"
+                >
+                  {t("common.back")}
+                </button>
+                <button
+                  type="button"
+                  onClick={validate}
+                  className="flex h-[50px] items-center justify-center gap-2 rounded-[14px] bg-[#050033] text-[15px] font-bold text-white shadow-[0_4px_14px_rgba(5,0,51,0.25)] transition-all active:scale-[0.97]"
+                >
+                  {t("common.validate")}
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── SUCCESS PREMIUM BOTTOM SHEET ── */}
+      {showSuccess ? (
+        <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/50 backdrop-blur-[2px]" style={{ animation: 'fadeIn .25s ease' }}>
+          <div className="w-full max-h-[92vh] overflow-y-auto rounded-t-[24px] bg-[#F8F9FB] pb-6 shadow-[0_-8px_40px_rgba(5,0,51,0.18)]" style={{ animation: 'slideUp .3s cubic-bezier(.22,1,.36,1)' }}>
+            {/* Drag handle */}
+            <div className="sticky top-0 z-10 flex justify-center bg-[#F8F9FB] pt-3 pb-1 rounded-t-[24px]">
+              <div className="h-[5px] w-10 rounded-full bg-[#D1D5DB]" />
+            </div>
+
+            <div className="px-5">
+              {/* Success Header */}
+              <div className="flex flex-col items-center pt-2 pb-5">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#B8E63C] to-[#7AA600] shadow-[0_6px_20px_rgba(122,166,0,0.35)]" style={{ animation: 'scaleIn .4s cubic-bezier(.22,1,.36,1)' }}>
+                  <CheckCircle2 size={32} className="text-white" />
+                </div>
+                <h2 className="mt-4 text-[20px] font-bold tracking-tight text-[#090927]">Virement effectué avec succès</h2>
+                <p className="mt-1 text-[13px] text-[#6B7280]">Votre virement a bien été enregistré</p>
+              </div>
+
+              {/* Receipt Card */}
+              <div className="mb-3 rounded-[16px] border border-[#E5E7EB] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] overflow-hidden">
+                {/* Card header accent */}
+                <div className="h-1 bg-gradient-to-r from-[#9ACD00] via-[#B8E63C] to-[#7AA600]" />
+                <div className="p-4 space-y-0">
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("common.reference")}</span>
+                    <span className="text-[13px] font-bold font-mono text-[#050033]">{finalReference}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("common.date")}</span>
+                    <span className="text-[13px] font-medium text-[#090927]">{(validatedAt ?? new Date()).toLocaleDateString("fr-FR")}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("common.hour")}</span>
+                    <span className="text-[13px] font-medium text-[#090927]">{(validatedAt ?? new Date()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("transfers.debitAccount")}</span>
+                    <span className="text-[13px] font-medium text-[#090927]">{selectedDebitAccount.name}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">IBAN</span>
+                    <span className="text-[12px] font-mono text-[#9CA3AF]">{maskIban(selectedDebitAccount.iban)}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("transfers.beneficiary")}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#050033] text-[10px] font-bold text-white">
+                        {selectedBeneficiary.initials}
+                      </div>
+                      <span className="text-[13px] font-medium text-[#090927]">{selectedBeneficiary.name}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("common.type")}</span>
+                    <span className="text-[13px] font-medium text-[#090927]">{selectedTransferType.label}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("transfers.executionDate")}</span>
+                    <span className="text-[13px] font-medium text-[#090927]">{executionDate}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                    <span className="text-[13px] text-[#6B7280]">{t("transfers.fees")}</span>
+                    <span className="text-[13px] font-medium text-[#7AA600]">0,00 EUR</span>
+                  </div>
+                </div>
+
+                {/* Amount / Total highlight */}
+                <div className="border-t-2 border-dashed border-[#E5E7EB] bg-gradient-to-r from-[#FBFFF1] to-[#EEF7D8]/50 px-4 py-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] text-[#6B7280]">{t("common.amount")}</span>
+                    <span className="text-[15px] font-bold text-[#090927]">{totalFormatted}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-[14px] font-semibold text-[#090927]">{t("transfers.total")}</span>
+                    <span className="text-[20px] font-extrabold text-[#050033]">{totalFormatted}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status banner */}
+              <div className="mb-4 flex items-start gap-3 rounded-[14px] bg-[#EEF7D8]/70 border border-[#9ACD00]/20 p-3.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#7AA600]/10 mt-0.5">
+                  <Check size={16} className="text-[#7AA600]" />
+                </div>
+                <div>
+                  <p className="text-[13px] font-semibold text-[#090927]">Pris en compte</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-[#6B7280]">Le traitement du virement est en cours selon la date d&apos;exécution prévue.</p>
+                </div>
+              </div>
+
+              {emailStatus !== "idle" ? (
+                <div className="mb-4 rounded-[14px] border border-[#E5E7EB] bg-white p-3 text-[12px] text-[#6B7280]">
+                  <p className="font-semibold text-[#090927]">{emailStatus === "sending" ? t("transfers.emailNotice.sending") : emailStatus === "sent" ? t("transfers.emailNotice.sent") : t("transfers.emailNotice.failed")}</p>
+                  {emailStatus === "sent" ? <p className="mt-1">{t("transfers.emailNotice.sentTo")} : {selectedBeneficiary.email}</p> : null}
+                  {emailError ? <p className="mt-1 text-[#DC2626]">{emailError}</p> : null}
+                </div>
+              ) : null}
+
+              {/* Action Buttons */}
+              <div className="space-y-2.5 pb-2">
+                <button
+                  type="button"
+                  onClick={downloadReceipt}
+                  className="flex h-[50px] w-full items-center justify-center gap-2 rounded-[14px] border-2 border-[#050033]/20 text-[15px] font-semibold text-[#050033] transition-all active:scale-[0.97]"
+                >
+                  <Download size={18} />
+                  {t("transfers.downloadReceipt")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowSuccess(false); setShowRecap(false); setTemporaryReference(""); setFinalReference(""); setValidatedAt(null); resetEmailNotice(); }}
+                  className="flex h-[50px] w-full items-center justify-center gap-2 rounded-[14px] bg-[#050033] text-[15px] font-bold text-white shadow-[0_4px_14px_rgba(5,0,51,0.25)] transition-all active:scale-[0.97]"
+                >
+                  Faire un autre virement
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {showAccountPicker ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4"><div className="flex items-center justify-between"><h2 className="text-[18px] font-bold">{t("transfers.chooseAccount")}</h2><button type="button" onClick={() => setShowAccountPicker(false)}><X size={18} /></button></div><div className="mt-3 space-y-2">{debitAccounts.map((account) => { const isSelected = selectedDebitAccountId === account.id; return <button key={account.id} type="button" aria-pressed={isSelected} aria-label={`Selectionner ${account.name}`} onClick={() => { resetEmailForNewTransfer(); setSelectedDebitAccountId(account.id); setShowAccountPicker(false); }} className={`flex w-full items-center justify-between rounded-[12px] border px-3 py-3 text-left ${isSelected ? "border-[#9ACD00] bg-[#F7FBEA]" : "border-[#E5E7EB] bg-white"}`}><span><span className="block text-[14px] font-semibold">{account.name}</span><span className="block text-[12px] text-[#6B7280]">{account.balance} - {maskIban(account.iban)}</span></span>{isSelected ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>; })}</div></div></div> : null}
+      {showTypePicker ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4">{transferTypes.map((type) => <button key={type.id} type="button" aria-pressed={selectedTransferTypeId === type.id} onClick={() => selectTransferType(type.id)} className={`mb-2 flex w-full items-center justify-between rounded-[12px] border p-3 text-left ${selectedTransferTypeId === type.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB]"}`}><span>{type.label}</span>{selectedTransferTypeId === type.id ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>)}</div></div> : null}
+      {showDetail ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4"><p>{t("transfers.beneficiary")} : {showDetail.beneficiary}</p><p>{t("common.reference")} : {showDetail.reference}</p><button type="button" onClick={() => setShowDetail(null)} className="mt-4 h-10 w-full rounded-[10px] bg-[#050033] text-white">{t("common.close")}</button></div></div> : null}
+      <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />
+    </>
+  );
+}
