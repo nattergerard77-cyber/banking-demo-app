@@ -81,17 +81,6 @@ function formatAmount(value: string) {
   return `${amount.toFixed(2).replace(".", ",")} EUR`;
 }
 
-function generateTransferReference() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  const h = String(now.getHours()).padStart(2, "0");
-  const min = String(now.getMinutes()).padStart(2, "0");
-  const suffix = String(Math.floor(Math.random() * 9000) + 1000);
-  return `VIR-${y}${m}${d}-${h}${min}-${suffix}`;
-}
-
 function generateTemporaryReference() {
   const now = new Date();
   const y = String(now.getFullYear()).slice(-2);
@@ -145,6 +134,8 @@ export default function DesktopDirectTransfer() {
   const [finalReference, setFinalReference] = useState("");
   const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const now = validatedAt ?? new Date();
   const formattedAmount = formatAmount(formData.amount || "0");
   const selectedDebitAccount = debitAccounts.find((account) => account.id === selectedDebitAccountId) ?? debitAccounts[0];
@@ -256,23 +247,84 @@ export default function DesktopDirectTransfer() {
     });
   }
 
-  function validateTransfer() {
-    const currentDate = new Date();
-    const reference = finalReference || generateTransferReference();
-    setValidatedAt(currentDate);
-    setFinalReference(reference);
-    setStep("success");
-    addTransferNotification({ beneficiary: formData.beneficiaryName, amount: formattedAmount, reference });
-    addTransferMessage({
-      beneficiary: formData.beneficiaryName,
-      amount: formattedAmount,
-      reference,
-      accountName: selectedDebitAccount.name,
-      executionDate,
-      validationDate: currentDate.toLocaleDateString("fr-FR"),
-      validationTime: currentDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-    });
-    sendBeneficiaryNotice(reference, currentDate);
+  function todayDateString(): string {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function getTransferPayload() {
+    return {
+      accountCode: selectedDebitAccountId,
+      accountId: null,
+      beneficiaryId: null,
+      beneficiaryName: formData.beneficiaryName.trim(),
+      beneficiaryIban: formData.iban.trim(),
+      beneficiaryBank: formData.bankName.trim(),
+      beneficiaryEmail: formData.email.trim(),
+      amount: parseAmount(formData.amount),
+      reason: formData.reason.trim() || "Virement",
+      transferType: selectedTransferTypeId,
+      executionDate: selectedTransferTypeId === "scheduled" ? formData.executionDate : todayDateString(),
+      idempotencyKey: crypto.randomUUID(),
+    };
+  }
+
+  async function validateTransfer() {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const payload = getTransferPayload();
+      const response = await fetch("/api/transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json() as { success: boolean; transfer?: { reference?: string }; error?: string; message?: string };
+
+      if (!result.success || !result.transfer?.reference) {
+        const errorCode = result.error || "UNKNOWN";
+        const errorMessage = result.message || "Une erreur est survenue lors du virement. Veuillez réessayer.";
+        const codeMessages: Record<string, string> = {
+          INVALID_AMOUNT: "Montant invalide.",
+          MISSING_ACCOUNT: "Veuillez sélectionner un compte débiteur.",
+          MISSING_BENEFICIARY_NAME: "Veuillez renseigner le nom du bénéficiaire.",
+          MISSING_BENEFICIARY_IBAN: "Veuillez renseigner l'IBAN du bénéficiaire.",
+          INSUFFICIENT_FUNDS: "Solde insuffisant pour effectuer ce virement.",
+          ACCOUNT_NOT_FOUND: "Compte débiteur introuvable.",
+          ACCOUNT_NOT_ACTIVE: "Ce compte n'est pas actif.",
+          INVALID_TRANSFER_TYPE: "Type de virement invalide.",
+        };
+        setSubmitError(codeMessages[errorCode] || errorMessage);
+        return;
+      }
+
+      const supabaseReference = result.transfer.reference;
+      const currentDate = new Date();
+      setValidatedAt(currentDate);
+      setFinalReference(supabaseReference);
+      setStep("success");
+      addTransferNotification({ beneficiary: formData.beneficiaryName, amount: formattedAmount, reference: supabaseReference });
+      addTransferMessage({
+        beneficiary: formData.beneficiaryName,
+        amount: formattedAmount,
+        reference: supabaseReference,
+        accountName: selectedDebitAccount.name,
+        executionDate,
+        validationDate: currentDate.toLocaleDateString("fr-FR"),
+        validationTime: currentDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      });
+      sendBeneficiaryNotice(supabaseReference, currentDate);
+    } catch {
+      setSubmitError("Une erreur réseau est survenue. Veuillez réessayer.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function selectTransferType(typeId: string) {
@@ -289,6 +341,8 @@ export default function DesktopDirectTransfer() {
     setTemporaryReference("");
     setFinalReference("");
     resetEmailNotice();
+    setSubmitError(null);
+    setIsSubmitting(false);
     setStep("form");
   }
 
@@ -453,8 +507,9 @@ export default function DesktopDirectTransfer() {
                       <div className="flex items-center justify-between"><span className="text-[#6B7280]">Frais</span><span className="font-semibold text-[#7AA600]">0,00 EUR</span></div>
                       <div className="flex items-center justify-between"><span className="text-[#6B7280]">Execution</span><span className="font-semibold text-[#090927]">{executionDate}</span></div>
                     </div>
-                    <button type="button" onClick={validateTransfer} className="mt-5 h-11 w-full rounded-[10px] bg-[#050033] text-[15px] font-bold text-white">{t("common.validate")}</button>
-                    <button type="button" onClick={() => { resetEmailForNewTransfer(); setStep("form"); }} className="mt-2 h-11 w-full rounded-[10px] border border-[#050033] text-[14px] font-semibold text-[#050033]">{t("common.back")}</button>
+                    {submitError ? <div className="mt-3 rounded-[10px] border border-[#DC2626] bg-[#FEF2F2] p-3 text-[13px] text-[#DC2626]">{submitError}</div> : null}
+                    <button type="button" onClick={validateTransfer} disabled={isSubmitting} className={`mt-5 h-11 w-full rounded-[10px] ${isSubmitting ? "cursor-not-allowed bg-[#6B7280]" : "bg-[#050033]"} text-[15px] font-bold text-white`}>{isSubmitting ? "Traitement en cours..." : t("common.validate")}</button>
+                    <button type="button" onClick={() => { resetEmailForNewTransfer(); setStep("form"); }} disabled={isSubmitting} className="mt-2 h-11 w-full rounded-[10px] border border-[#050033] text-[14px] font-semibold text-[#050033]">{t("common.back")}</button>
                     <p className="mt-3 text-[12px] text-[#6B7280]">En validant, vous confirmez les informations du virement.</p>
                   </div>
 
