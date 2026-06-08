@@ -21,8 +21,9 @@ import {
 } from "recharts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
+import type { SupabaseAccount, SupabaseTransaction } from "@/types/supabase";
 import ClientOnlyChart from "../shared/ClientOnlyChart";
 import DemoModal from "../shared/DemoModal";
 import DemoToast from "../shared/DemoToast";
@@ -42,60 +43,6 @@ const chartData = [
   { day: "Aujourd’hui", solde: 300000 },
 ];
 
-const operations = [
-  {
-    icon: Building2,
-    title: "Virement reçu — Compte italien",
-    subtitle: "Istituto Bancario Italiano",
-    date: "15 juillet 2022",
-    time: "14:37",
-    amount: 18750,
-    positive: true,
-  },
-  {
-    icon: Building2,
-    title: "Virement reçu — Compte italien",
-    subtitle: "Istituto Bancario Italiano",
-    date: "15 janvier 2022",
-    time: "09:18",
-    amount: 18750,
-    positive: true,
-  },
-  {
-    icon: Building2,
-    title: "Virement reçu — Compte italien",
-    subtitle: "Istituto Bancario Italiano",
-    date: "15 juillet 2021",
-    time: "16:05",
-    amount: 18750,
-    positive: true,
-  },
-  {
-    icon: Building2,
-    title: "Virement reçu — Compte italien",
-    subtitle: "Istituto Bancario Italiano",
-    date: "15 janvier 2021",
-    time: "10:42",
-    amount: 18750,
-    positive: true,
-  },
-  {
-    icon: Building2,
-    title: "Virement reçu — Compte italien",
-    subtitle: "Istituto Bancario Italiano",
-    date: "15 juillet 2020",
-    time: "13:26",
-    amount: 18750,
-    positive: true,
-  },
-];
-
-const quickActions = [
-  { icon: ArrowLeftRight, label: "Virement" },
-  { icon: UserPlus, label: "Ajouter un bénéficiaire" },
-  { icon: Download, label: "Télécharger mon RIB" },
-];
-
 function money(value: number) {
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
@@ -106,6 +53,11 @@ function money(value: number) {
 function signedMoney(value: number) {
   const formatted = money(Math.abs(value));
   return value >= 0 ? `+ ${formatted}` : `- ${formatted}`;
+}
+
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getDate()} ${d.toLocaleDateString("fr-FR", { month: "long" })} ${d.getFullYear()}`;
 }
 
 function Card({
@@ -132,6 +84,46 @@ export function DesktopDashboard() {
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
   const [toast, setToast] = useState("");
 
+  const [accounts, setAccounts] = useState<SupabaseAccount[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<SupabaseTransaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [accountsRes, txRes] = await Promise.all([
+          fetch("/api/accounts"),
+          fetch("/api/transactions?limit=6"),
+        ]);
+        const accountsData = await accountsRes.json();
+        const txData = await txRes.json();
+
+        if (accountsData.success) setAccounts(accountsData.accounts);
+        else setAccountsError("Impossible de charger les comptes pour le moment.");
+
+        if (txData.success) setTransactions(txData.transactions);
+        else setTransactionsError("Impossible de charger les dernières opérations pour le moment.");
+      } catch {
+        setAccountsError("Impossible de charger les comptes pour le moment.");
+        setTransactionsError("Impossible de charger les dernières opérations pour le moment.");
+      } finally {
+        setAccountsLoading(false);
+        setTransactionsLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const totalBalance = accounts.reduce((sum: number, a: SupabaseAccount) => {
+    return sum + Number(a.available_balance ?? a.balance ?? 0);
+  }, 0);
+
+  const currentAccount = accounts.find((a: SupabaseAccount) => a.code === "current");
+  const savingsAccount = accounts.find((a: SupabaseAccount) => a.code === "savings");
+
   const goQuickAction = (label: string) => {
     if (label === t("dashboard.quickActionTransfer")) router.push("/virements");
     else if (label === t("dashboard.quickActionAddBeneficiary")) router.push("/beneficiaires");
@@ -142,54 +134,6 @@ export function DesktopDashboard() {
     { icon: ArrowLeftRight, label: t("dashboard.quickActionTransfer") },
     { icon: UserPlus, label: t("dashboard.quickActionAddBeneficiary") },
     { icon: Download, label: t("dashboard.quickActionDownloadRIB") },
-  ];
-
-  const operations = [
-    {
-      icon: Building2,
-      title: t("dashboard.operations.italianTransfer"),
-      subtitle: t("dashboard.operations.italianBank"),
-      date: "15 juillet 2022",
-      time: "14:37",
-      amount: 18750,
-      positive: true,
-    },
-    {
-      icon: Building2,
-      title: t("dashboard.operations.italianTransfer"),
-      subtitle: t("dashboard.operations.italianBank"),
-      date: "15 janvier 2022",
-      time: "09:18",
-      amount: 18750,
-      positive: true,
-    },
-    {
-      icon: Building2,
-      title: t("dashboard.operations.italianTransfer"),
-      subtitle: t("dashboard.operations.italianBank"),
-      date: "15 juillet 2021",
-      time: "16:05",
-      amount: 18750,
-      positive: true,
-    },
-    {
-      icon: Building2,
-      title: t("dashboard.operations.italianTransfer"),
-      subtitle: t("dashboard.operations.italianBank"),
-      date: "15 janvier 2021",
-      time: "10:42",
-      amount: 18750,
-      positive: true,
-    },
-    {
-      icon: Building2,
-      title: t("dashboard.operations.italianTransfer"),
-      subtitle: t("dashboard.operations.italianBank"),
-      date: "15 juillet 2020",
-      time: "13:26",
-      amount: 18750,
-      positive: true,
-    },
   ];
 
   return (
@@ -227,7 +171,7 @@ export function DesktopDashboard() {
                 </div>
 
                 <p className="mt-4 text-[28px] font-bold tracking-tight text-[#050033]">
-                  300.000,00 €
+                  {accountsLoading ? "" : money(totalBalance)}
                 </p>
                 <p className="mt-0.5 text-[13px] text-[#6B7280]">
                   {t("dashboard.encours")} • 3 comptes
@@ -240,61 +184,82 @@ export function DesktopDashboard() {
             </div>
           </Card>
 
-          <Card className="col-span-3 p-5 flex flex-col justify-between interactive-card">
-            <div>
-              <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-[#050033] text-white">
-                <Wallet size={18} />
-              </div>
+          {accountsLoading ? (
+            <>
+              <Card className="col-span-3 p-5 flex flex-col justify-between interactive-card">
+                <p className="text-[14px] text-[#6B7280]">Chargement...</p>
+              </Card>
+              <Card className="col-span-4 p-5 flex flex-col justify-between interactive-card">
+                <p className="text-[14px] text-[#6B7280]">Chargement...</p>
+              </Card>
+            </>
+          ) : accountsError ? (
+            <Card className="col-span-7 p-5 flex flex-col justify-between interactive-card">
+              <p className="text-[14px] text-[#6B7280]">{accountsError}</p>
+            </Card>
+          ) : (
+            <>
+              {currentAccount && (
+              <Card className="col-span-3 p-5 flex flex-col justify-between interactive-card">
+                <div>
+                  <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-[#050033] text-white">
+                    <Wallet size={18} />
+                  </div>
 
-              <p className="mt-4 text-[14px] font-semibold text-[#090927]">
-                {t("dashboard.currentAccount")}
-              </p>
-              <p className="mt-0.5 text-[11px] text-[#6B7280]">
-                LU12 0019 1234 5678 9000
-              </p>
-            </div>
+                  <p className="mt-4 text-[14px] font-semibold text-[#090927]">
+                    {currentAccount.name}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-[#6B7280]">
+                    {currentAccount.iban}
+                  </p>
+                </div>
 
-            <div className="mt-3 flex items-end justify-between">
-              <div>
-                <p className="text-[22px] font-bold text-[#050033]">
-                  84.320,00 €
-                </p>
-                <p className="mt-0.5 text-[12px] text-[#6B7280]">{t("dashboard.available")}</p>
-              </div>
+                <div className="mt-3 flex items-end justify-between">
+                  <div>
+                    <p className="text-[22px] font-bold text-[#050033]">
+                      {money(Number(currentAccount.available_balance ?? currentAccount.balance))}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-[#6B7280]">{t("dashboard.available")}</p>
+                  </div>
 
-              <Link href="/comptes" aria-label="Voir le compte courant" className="mb-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#050033] text-white interactive-link">
-                <ChevronRight size={15} />
-              </Link>
-            </div>
-          </Card>
+                  <Link href="/comptes" aria-label={`Voir ${currentAccount.name}`} className="mb-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#050033] text-white interactive-link">
+                    <ChevronRight size={15} />
+                  </Link>
+                </div>
+              </Card>
+              )}
 
-          <Card className="col-span-4 p-5 flex flex-col justify-between interactive-card">
-            <div>
-              <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-[#050033] text-white">
-                <PiggyBank size={18} />
-              </div>
+              {savingsAccount && (
+              <Card className="col-span-4 p-5 flex flex-col justify-between interactive-card">
+                <div>
+                  <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-[#050033] text-white">
+                    <PiggyBank size={18} />
+                  </div>
 
-              <p className="mt-4 text-[14px] font-semibold text-[#090927]">
-                {t("dashboard.savingsAccount")}
-              </p>
-              <p className="mt-0.5 text-[11px] text-[#6B7280]">
-                LU34 0019 9876 5432 1000
-              </p>
-            </div>
+                  <p className="mt-4 text-[14px] font-semibold text-[#090927]">
+                    {savingsAccount.name}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-[#6B7280]">
+                    {savingsAccount.iban}
+                  </p>
+                </div>
 
-            <div className="mt-3 flex items-end justify-between">
-              <div>
-                <p className="text-[22px] font-bold text-[#050033]">
-                  185.680,00 €
-                </p>
-                <p className="mt-0.5 text-[12px] text-[#6B7280]">{t("dashboard.available")}</p>
-              </div>
+                <div className="mt-3 flex items-end justify-between">
+                  <div>
+                    <p className="text-[22px] font-bold text-[#050033]">
+                      {money(Number(savingsAccount.available_balance ?? savingsAccount.balance))}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-[#6B7280]">{t("dashboard.available")}</p>
+                  </div>
 
-              <Link href="/comptes" aria-label="Voir le compte épargne" className="mb-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#050033] text-white interactive-link">
-                <ChevronRight size={15} />
-              </Link>
-            </div>
-          </Card>
+                  <Link href="/comptes" aria-label={`Voir ${savingsAccount.name}`} className="mb-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#050033] text-white interactive-link">
+                    <ChevronRight size={15} />
+                  </Link>
+                </div>
+              </Card>
+              )}
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-12 gap-4">
@@ -400,50 +365,59 @@ export function DesktopDashboard() {
             </div>
 
             <div className="divide-y divide-[#E5E7EB]">
-              {operations.map((operation, index) => {
-                const Icon = operation.icon;
-                return (
-                  <button
-                    key={`${operation.date}-${operation.time}-${operation.title}-${operation.amount}-${index}`}
-                    type="button"
-                    onClick={() => setModal({ title: operation.title, message: `${operation.subtitle} - ${signedMoney(operation.amount)} (${operation.date} à ${operation.time})` })}
-                    className="grid w-full grid-cols-[40px_1fr_100px_100px] items-center gap-3 py-3 interactive-row"
-                  >
-                    <div
-                      className={`flex h-9 w-9 items-center justify-center rounded-full ${
-                        operation.positive
-                          ? "bg-[#EEF7D8] text-[#7AA600]"
-                          : "bg-[#F3F4F6] text-[#050033]"
-                      }`}
+              {transactionsLoading ? (
+                <p className="py-3 text-[14px] text-[#6B7280]">Chargement...</p>
+              ) : transactionsError ? (
+                <p className="py-3 text-[14px] text-[#6B7280]">{transactionsError}</p>
+              ) : transactions.length === 0 ? (
+                <p className="py-3 text-[14px] text-[#6B7280]">Aucune opération récente.</p>
+              ) : (
+                transactions.map((tx: SupabaseTransaction, index: number) => {
+                  const positive = tx.direction === "credit";
+                  const amount = Number(tx.amount);
+                  const dateStr = formatDate(tx.transaction_date);
+                  const timeStr = tx.transaction_time ? tx.transaction_time.slice(0, 5) : "";
+                  return (
+                    <button
+                      key={tx.id ?? `${tx.transaction_date}-${tx.amount}-${index}`}
+                      type="button"
+                      onClick={() => setModal({ title: tx.label, message: `${tx.merchant ?? tx.bank ?? tx.category ?? ""} - ${signedMoney(positive ? amount : -amount)} (${dateStr} à ${timeStr})` })}
+                      className="grid w-full grid-cols-[40px_1fr_100px_100px] items-center gap-3 py-3 interactive-row"
                     >
-                      <Icon size={18} />
-                    </div>
+                      <div
+                        className={`flex h-9 w-9 items-center justify-center rounded-full ${
+                          positive
+                            ? "bg-[#EEF7D8] text-[#7AA600]"
+                            : "bg-[#F3F4F6] text-[#050033]"
+                        }`}
+                      >
+                        <Building2 size={18} />
+                      </div>
 
-                    <div>
-                      <p className="text-[14px] font-semibold text-[#090927]">
-                        {operation.title}
+                      <div>
+                        <p className="text-[14px] font-semibold text-[#090927]">
+                          {tx.label}
+                        </p>
+                        <p className="mt-0.5 text-[12px] text-[#6B7280]">
+                          {tx.merchant ?? tx.bank ?? tx.category ?? ""}
+                        </p>
+                      </div>
+
+                      <p className="text-[12px] text-[#6B7280]">
+                        {dateStr}{timeStr ? ` · ${timeStr}` : ""}
                       </p>
-                      <p className="mt-0.5 text-[12px] text-[#6B7280]">
-                        {operation.subtitle}
+
+                      <p
+                        className={`text-right text-[15px] font-bold ${
+                          positive ? "text-[#7AA600]" : "text-[#050033]"
+                        }`}
+                      >
+                        {signedMoney(positive ? amount : -amount)}
                       </p>
-                    </div>
-
-                    <p className="text-[12px] text-[#6B7280]">
-                      {operation.date} · {operation.time}
-                    </p>
-
-                    <p
-                      className={`text-right text-[15px] font-bold ${
-                        operation.positive
-                          ? "text-[#7AA600]"
-                          : "text-[#050033]"
-                      }`}
-                    >
-                      {signedMoney(operation.amount)}
-                    </p>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })
+              )}
             </div>
           </Card>
 

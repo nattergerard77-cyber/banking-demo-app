@@ -3,6 +3,7 @@
 import {
   ArrowLeftRight,
   Bell,
+  Building2,
   ChevronRight,
   CreditCard,
   Eye,
@@ -14,11 +15,29 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
+import type { SupabaseAccount, SupabaseTransaction } from "@/types/supabase";
 
 import MobileShell from "./MobileShell";
 import DemoModal from "../shared/DemoModal";
+
+function money(value: number) {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+  }).format(value);
+}
+
+function signedMoney(value: number) {
+  const formatted = money(Math.abs(value));
+  return value >= 0 ? `+ ${formatted}` : `- ${formatted}`;
+}
+
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getDate()} ${d.toLocaleDateString("fr-FR", { month: "long" })} ${d.getFullYear()}`;
+}
 
 function MobileCard({
   children,
@@ -42,29 +61,51 @@ export function MobileDashboard() {
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState("current");
 
-  const accounts = [
-    {
-      id: "current",
-      label: t("dashboard.currentAccount"),
-      balance: "84.320,00 €",
-      icon: Wallet,
-      activeBg: "bg-[#EEF7D8] text-[#9ACD00]",
-    },
-    {
-      id: "savings",
-      label: t("dashboard.savingsAccount"),
-      balance: "185.680,00 €",
-      icon: PiggyBank,
-      activeBg: "bg-[#EEF7D8] text-[#9ACD00]",
-    },
-    {
-      id: "joint",
-      label: t("dashboard.mobile.jointAccount"),
-      balance: "30.000,00 €",
-      icon: Users,
-      activeBg: "bg-[#EEF7D8] text-[#9ACD00]",
-    },
-  ];
+  const [accounts, setAccounts] = useState<SupabaseAccount[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<SupabaseTransaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [accountsRes, txRes] = await Promise.all([
+          fetch("/api/accounts"),
+          fetch("/api/transactions?limit=3"),
+        ]);
+        const accountsData = await accountsRes.json();
+        const txData = await txRes.json();
+
+        if (accountsData.success) setAccounts(accountsData.accounts);
+        else setAccountsError("Impossible de charger les comptes pour le moment.");
+
+        if (txData.success) setTransactions(txData.transactions);
+        else setTransactionsError("Impossible de charger les dernières opérations pour le moment.");
+      } catch {
+        setAccountsError("Impossible de charger les comptes pour le moment.");
+        setTransactionsError("Impossible de charger les dernières opérations pour le moment.");
+      } finally {
+        setAccountsLoading(false);
+        setTransactionsLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const totalBalance = accounts.reduce((sum: number, a: SupabaseAccount) => {
+    return sum + Number(a.available_balance ?? a.balance ?? 0);
+  }, 0);
+
+  const accountIcon = (code: string) => {
+    switch (code) {
+      case "current": return Wallet;
+      case "savings": return PiggyBank;
+      case "joint": return Users;
+      default: return Wallet;
+    }
+  };
 
   return (
     <>
@@ -90,7 +131,7 @@ export function MobileDashboard() {
               </div>
 
               <p className="mt-1 text-[28px] font-bold tracking-[0.02em] text-[#050033]">
-                300.000,00 €
+                {accountsLoading ? "" : money(totalBalance)}
               </p>
 
               <p className="mt-0.5 text-[13px] text-[#6B7280]">
@@ -107,60 +148,73 @@ export function MobileDashboard() {
         <MobileCard className="p-3">
           <div className="overflow-x-auto scrollbar-hide">
             <div className="flex gap-2.5 px-1 pb-1">
-              {accounts.map((accountItem) => {
-                const Icon = accountItem.icon;
-                const isSelected = selectedAccountId === accountItem.id;
+              {accountsLoading ? (
+                <div className="min-w-[210px] py-3">
+                  <p className="text-[14px] text-[#6B7280]">Chargement...</p>
+                </div>
+              ) : accountsError ? (
+                <div className="min-w-[210px] py-3">
+                  <p className="text-[14px] text-[#6B7280]">{accountsError}</p>
+                </div>
+              ) : (
+                accounts.map((accountItem: SupabaseAccount) => {
+                  const Icon = accountIcon(accountItem.code);
+                  const id = accountItem.code;
+                  const label = accountItem.name;
+                  const balance = money(Number(accountItem.available_balance ?? accountItem.balance));
+                  const isSelected = selectedAccountId === id;
 
-                return (
-                  <button
-                    key={accountItem.id}
-                    type="button"
-                    onClick={() => setSelectedAccountId(accountItem.id)}
-                    onPointerUp={() => setSelectedAccountId(accountItem.id)}
-                    aria-pressed={isSelected}
-                    aria-label={`Sélectionner ${accountItem.label}`}
-                    className={`relative min-w-[210px] rounded-[10px] border p-3 text-left ${
-                      isSelected ? "border-[#9ACD00] bg-white shadow-sm" : "border-[#E5E7EB] bg-white"
-                    }`}
-                  >
-                    {isSelected && (
-                      <span className="absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded-full bg-[#9ACD00] text-white text-[10px]">
-                        ✓
-                      </span>
-                    )}
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                          isSelected ? accountItem.activeBg : "bg-[#F3F4F6] text-[#050033]"
-                        }`}
-                      >
-                        <Icon size={20} />
-                      </div>
-                      <div>
-                        <p
-                          className={`font-semibold text-[13px] leading-tight ${
-                            isSelected ? "text-[#090927]" : "text-[#6B7280]"
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setSelectedAccountId(id)}
+                      onPointerUp={() => setSelectedAccountId(id)}
+                      aria-pressed={isSelected}
+                      aria-label={`Sélectionner ${label}`}
+                      className={`relative min-w-[210px] rounded-[10px] border p-3 text-left ${
+                        isSelected ? "border-[#9ACD00] bg-white shadow-sm" : "border-[#E5E7EB] bg-white"
+                      }`}
+                    >
+                      {isSelected && (
+                        <span className="absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded-full bg-[#9ACD00] text-white text-[10px]">
+                          ✓
+                        </span>
+                      )}
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                            isSelected ? "bg-[#EEF7D8] text-[#9ACD00]" : "bg-[#F3F4F6] text-[#050033]"
                           }`}
                         >
-                          {accountItem.label}
-                        </p>
-                        <p className="mt-0.5 text-[15px] font-bold text-[#090927] leading-tight">
-                          {accountItem.balance}
-                        </p>
+                          <Icon size={20} />
+                        </div>
+                        <div>
+                          <p
+                            className={`font-semibold text-[13px] leading-tight ${
+                              isSelected ? "text-[#090927]" : "text-[#6B7280]"
+                            }`}
+                          >
+                            {label}
+                          </p>
+                          <p className="mt-0.5 text-[15px] font-bold text-[#090927] leading-tight">
+                            {balance}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
 
           <div className="mt-2 flex justify-center gap-1.5">
-            {accounts.map((accountItem) => (
+            {accounts.map((accountItem: SupabaseAccount) => (
               <span
-                key={accountItem.id}
+                key={accountItem.code}
                 className={`h-1.5 w-1.5 rounded-full ${
-                  selectedAccountId === accountItem.id ? "bg-[#9ACD00]" : "bg-[#D1D5DB]"
+                  selectedAccountId === accountItem.code ? "bg-[#9ACD00]" : "bg-[#D1D5DB]"
                 }`}
               />
             ))}
@@ -204,69 +258,55 @@ export function MobileDashboard() {
             </Link>
           </div>
 
-          {[
-            {
-              icon: Wallet,
-              name: t("dashboard.operations.italianTransfer"),
-              date: "15 juillet 2022",
-              time: "14:37",
-              amount: "+18.750,00 €",
-              positive: true,
-            },
-            {
-              icon: Wallet,
-              name: t("dashboard.operations.italianTransfer"),
-              date: "15 janvier 2022",
-              time: "09:18",
-              amount: "+18.750,00 €",
-              positive: true,
-            },
-            {
-              icon: Wallet,
-              name: t("dashboard.operations.italianTransfer"),
-              date: "15 juillet 2021",
-              time: "16:05",
-              amount: "+18.750,00 €",
-              positive: true,
-            },
-          ].map((tx, index) => {
-            const Icon = tx.icon;
-            return (
-              <button
-                key={`${tx.date}-${tx.time}-${tx.name}-${tx.amount}-${index}`}
-                type="button"
-                onClick={() => setModal({ title: tx.name, message: `Détail de l’opération: ${tx.amount} le ${tx.date} à ${tx.time}.` })}
-                className="flex w-full items-center gap-3 border-b border-[#E5E7EB] py-2.5 last:border-0 interactive-row"
-              >
-                <div
-                  className={`flex h-9 w-9 items-center justify-center rounded-full ${
-                    tx.positive
-                      ? "bg-[#EEF7D8] text-[#7AA600]"
-                      : "bg-[#F3F4F6] text-[#050033]"
-                  }`}
+          {transactionsLoading ? (
+            <p className="py-3 text-[14px] text-[#6B7280]">Chargement...</p>
+          ) : transactionsError ? (
+            <p className="py-3 text-[14px] text-[#6B7280]">{transactionsError}</p>
+          ) : transactions.length === 0 ? (
+            <p className="py-3 text-[14px] text-[#6B7280]">Aucune opération récente.</p>
+          ) : (
+            transactions.map((tx: SupabaseTransaction, index: number) => {
+              const positive = tx.direction === "credit";
+              const amount = Number(tx.amount);
+              const dateStr = formatDate(tx.transaction_date);
+              const timeStr = tx.transaction_time ? tx.transaction_time.slice(0, 5) : "";
+              return (
+                <button
+                  key={tx.id ?? `${tx.transaction_date}-${tx.amount}-${index}`}
+                  type="button"
+                  onClick={() => setModal({ title: tx.label, message: `Détail de l’opération: ${signedMoney(positive ? amount : -amount)} le ${dateStr} à ${timeStr}.` })}
+                  className="flex w-full items-center gap-3 border-b border-[#E5E7EB] py-2.5 last:border-0 interactive-row"
                 >
-                  <Icon size={18} />
-                </div>
+                  <div
+                    className={`flex h-9 w-9 items-center justify-center rounded-full ${
+                      positive
+                        ? "bg-[#EEF7D8] text-[#7AA600]"
+                        : "bg-[#F3F4F6] text-[#050033]"
+                    }`}
+                  >
+                    <Building2 size={18} />
+                  </div>
 
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold text-[#090927]">
-                    {tx.name}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold text-[#090927]">
+                      {tx.label}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-[#6B7280]">{dateStr}{timeStr ? ` · ${timeStr}` : ""}</p>
+                  </div>
+
+                  <p
+                    className={`text-[13px] font-bold ${
+                      positive ? "text-[#7AA600]" : "text-[#050033]"
+                    }`}
+                  >
+                    {signedMoney(positive ? amount : -amount)}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-[#6B7280]">{tx.date} · {tx.time}</p>
-                </div>
 
-                <p
-                  className={`text-[13px] font-bold ${
-                    tx.positive ? "text-[#7AA600]" : "text-[#050033]"
-                  }`}
-                >
-                  {tx.amount}
-                </p>
-
-                <ChevronRight size={14} className="text-[#6B7280]" />
-              </button>
-            );
-          })}
+                  <ChevronRight size={14} className="text-[#6B7280]" />
+                </button>
+              );
+            })
+          )}
         </MobileCard>
 
         <button type="button" onClick={() => router.push('/epargne')} className="w-full text-left interactive-card rounded-[18px]">
