@@ -1,13 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, Clock3, Euro, FileText, Landmark, Plus, Repeat, ShieldCheck, User, Wallet, X, Zap } from "lucide-react";
 
 import DesktopShell from "./DesktopShell";
 import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
+import type { SupabaseAccount } from "@/types/supabase";
 import { useLanguage } from "@/context/LanguageContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useMessages } from "@/context/MessageContext";
@@ -17,17 +18,27 @@ import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
 
-const debitAccounts = [
-  { id: "current", name: "Compte courant", balance: "84.320,00 EUR", iban: "LU88 0019 2450 1234 5678", last4: "5678" },
-  { id: "savings", name: "Compte épargne", balance: "185.680,00 EUR", iban: "LU44 0019 8800 2040 3301", last4: "3301" },
-  { id: "joint", name: "Compte joint", balance: "30.000,00 EUR", iban: "LU76 0019 5520 7788 1140", last4: "1140" },
-];
-
 const transferTypes = [
   { id: "instant", label: "Virement immediat", description: "Execution des validation" },
   { id: "scheduled", label: "Virement differe", description: "Execution a une date choisie" },
   { id: "recurring", label: "Virement permanent", description: "Repetition automatique" },
 ];
+
+type DebitAccountViewModel = {
+  id: string;
+  supabaseId: string;
+  name: string;
+  iban: string;
+  last4: string;
+  balance: string;
+  rawBalance: number;
+  currency: string;
+  status: string;
+};
+
+type AccountsApiResponse =
+  | { success: true; accounts: SupabaseAccount[] }
+  | { success: false; error: string };
 
 type Beneficiary = {
   id: string;
@@ -87,10 +98,6 @@ function parseAmount(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parseBalance(value: string) {
-  return Number.parseFloat(value.replace(/\s/g, "").replace("EUR", "").replace(/\./g, "").replace(",", "."));
-}
-
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -102,6 +109,14 @@ function formatExecutionDate(value: string) {
 
 function formatAmount(value: string) {
   return `${parseAmount(value).toFixed(2).replace(".", ",")} EUR`;
+}
+
+function formatCurrency(value: number, currency = "EUR") {
+  if (!Number.isFinite(value)) return "Montant indisponible";
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency,
+  }).format(value);
 }
 
 function todayDateString(): string {
@@ -116,6 +131,22 @@ function maskIban(iban: string) {
   const clean = iban.replace(/\s+/g, "");
   if (clean.length < 10) return iban;
   return `${clean.slice(0, 4)} ${clean.slice(4, 8)} **** **** ${clean.slice(-4)}`;
+}
+
+function mapDebitAccount(account: SupabaseAccount): DebitAccountViewModel {
+  const rawBalance = Number(account.available_balance ?? account.balance ?? 0);
+
+  return {
+    id: account.code,
+    supabaseId: account.id,
+    name: account.name,
+    iban: account.iban,
+    last4: account.iban.replace(/\s+/g, "").slice(-4),
+    balance: formatCurrency(rawBalance, account.currency ?? "EUR"),
+    rawBalance: Number.isFinite(rawBalance) ? rawBalance : 0,
+    currency: account.currency ?? "EUR",
+    status: account.status,
+  };
 }
 
 function isUuid(value: string) {
@@ -151,6 +182,9 @@ export default function DesktopTransfers() {
   const { addTransferMessage } = useMessages();
   const [beneficiaries, setBeneficiaries] = useState(initialBeneficiaries);
   const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState("luca");
+  const [debitAccounts, setDebitAccounts] = useState<DebitAccountViewModel[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
   const [selectedDebitAccountId, setSelectedDebitAccountId] = useState("current");
   const [selectedTransferTypeId, setSelectedTransferTypeId] = useState("instant");
   const [amount, setAmount] = useState("120");
@@ -179,10 +213,52 @@ export default function DesktopTransfers() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const selectedBeneficiary = useMemo(() => beneficiaries.find((item) => item.id === selectedBeneficiaryId) ?? beneficiaries[0], [beneficiaries, selectedBeneficiaryId]);
-  const selectedDebitAccount = useMemo(() => debitAccounts.find((account) => account.id === selectedDebitAccountId) ?? debitAccounts[0], [selectedDebitAccountId]);
+  const selectedDebitAccount = useMemo(() => debitAccounts.find((account) => account.id === selectedDebitAccountId) ?? debitAccounts[0] ?? null, [debitAccounts, selectedDebitAccountId]);
   const selectedTransferType = useMemo(() => transferTypes.find((type) => type.id === selectedTransferTypeId) ?? transferTypes[0], [selectedTransferTypeId]);
   const totalFormatted = formatAmount(amount || "0");
   const executionDate = selectedTransferTypeId === "scheduled" ? formatExecutionDate(scheduledDate) : "Aujourd'hui";
+  const isAccountSelectionUnavailable = accountsLoading || Boolean(accountsError) || !selectedDebitAccount;
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAccounts() {
+      setAccountsLoading(true);
+      setAccountsError(null);
+
+      try {
+        const response = await fetch("/api/accounts");
+        const result = (await response.json()) as AccountsApiResponse;
+
+        if (!response.ok || !result.success) {
+          throw new Error("ACCOUNTS_FETCH_FAILED");
+        }
+
+        if (ignore) return;
+
+        const nextAccounts = result.accounts.map(mapDebitAccount);
+        setDebitAccounts(nextAccounts);
+        setSelectedDebitAccountId((current) => {
+          if (nextAccounts.some((account) => account.id === current)) return current;
+          const currentAccount = nextAccounts.find((account) => account.id === "current");
+          return currentAccount?.id ?? nextAccounts[0]?.id ?? "";
+        });
+      } catch {
+        if (!ignore) {
+          setDebitAccounts([]);
+          setAccountsError("Impossible de charger les comptes.");
+        }
+      } finally {
+        if (!ignore) setAccountsLoading(false);
+      }
+    }
+
+    void loadAccounts();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   function selectTransferType(typeId: string) {
     resetEmailForNewTransfer();
@@ -195,12 +271,24 @@ export default function DesktopTransfers() {
 
   function openRecap() {
     setSubmitError(null);
+    if (accountsLoading) {
+      setToast("Chargement des comptes...");
+      return;
+    }
+    if (accountsError) {
+      setToast("Impossible de charger les comptes.");
+      return;
+    }
+    if (!selectedDebitAccount) {
+      setToast("Aucun compte disponible.");
+      return;
+    }
     const parsedAmount = parseAmount(amount);
     if (!amount.trim() || parsedAmount <= 0) {
       setAmountError("Veuillez saisir un montant valide.");
       return;
     }
-    if (parsedAmount > parseBalance(selectedDebitAccount.balance)) {
+    if (parsedAmount > selectedDebitAccount.rawBalance) {
       setAmountError("Le montant dépasse le solde disponible du compte sélectionné.");
       return;
     }
@@ -356,7 +444,7 @@ export default function DesktopTransfers() {
         beneficiary: selectedBeneficiary.name,
         amount: totalFormatted,
         reference: supabaseReference,
-        accountName: selectedDebitAccount.name,
+        accountName: selectedDebitAccount?.name ?? "",
         executionDate,
         validationDate: now.toLocaleDateString("fr-FR"),
         validationTime: now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
@@ -374,8 +462,8 @@ export default function DesktopTransfers() {
       generateTransferPdf({
         holderName: "Frederico Di Mario",
         holderEmail: "fredericodimario8@gmail.com",
-        debitAccountName: selectedDebitAccount.name,
-        debitIban: selectedDebitAccount.iban,
+        debitAccountName: selectedDebitAccount?.name ?? "",
+        debitIban: selectedDebitAccount?.iban ?? "",
         beneficiaryName: selectedBeneficiary.name,
         beneficiaryBank: selectedBeneficiary.bank,
         beneficiaryIban: selectedBeneficiary.iban,
@@ -396,8 +484,8 @@ export default function DesktopTransfers() {
         `Reference: ${finalReference}`,
         `Date: ${(validatedAt ?? new Date()).toLocaleDateString("fr-FR")}`,
         `Heure: ${(validatedAt ?? new Date()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`,
-        `Compte debite: ${selectedDebitAccount.name}`,
-        `IBAN compte debite: ${selectedDebitAccount.iban}`,
+        `Compte debite: ${selectedDebitAccount?.name ?? ""}`,
+        `IBAN compte debite: ${selectedDebitAccount?.iban ?? ""}`,
         `Type de virement: ${selectedTransferType.label}`,
         `Date d'execution: ${executionDate}`,
         `Beneficiaire: ${selectedBeneficiary.name}`,
@@ -447,7 +535,7 @@ export default function DesktopTransfers() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <FieldLabel>Compte a debiter</FieldLabel>
-                  <button type="button" aria-label="Choisir le compte a debiter" onClick={() => setShowAccountPicker(true)} className="flex h-11 w-full items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[14px] font-medium text-[#090927]"><Wallet size={18} className="text-[#050033]" />{selectedDebitAccount.name} - {selectedDebitAccount.balance}<ChevronDown size={16} className="ml-auto text-[#6B7280]" /></button>
+                  <button type="button" aria-label="Choisir le compte a debiter" onClick={() => setShowAccountPicker(true)} className="flex h-11 w-full items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[14px] font-medium text-[#090927]"><Wallet size={18} className="text-[#050033]" />{accountsLoading ? "Chargement des comptes..." : selectedDebitAccount ? `${selectedDebitAccount.name} - ${selectedDebitAccount.balance}` : accountsError ? "Impossible de charger les comptes." : "Aucun compte disponible."}<ChevronDown size={16} className="ml-auto text-[#6B7280]" /></button>
                 </div>
                 <div>
                   <FieldLabel>Type de virement</FieldLabel>
@@ -504,7 +592,7 @@ export default function DesktopTransfers() {
                  <h2 className="text-[18px] font-bold text-[#090927]">Resume du virement</h2>
                 <div className="mt-5 space-y-4 text-[14px]">
                   <div className="flex items-center justify-between"><span className="text-[#6B7280]">Beneficiaire</span><span className="font-semibold text-[#090927]">{selectedBeneficiary.name}</span></div>
-                  <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-4"><span className="text-[#6B7280]">Compte debite</span><span className="font-semibold text-[#090927]">{selectedDebitAccount.name} - {selectedDebitAccount.last4}</span></div>
+                  <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-4"><span className="text-[#6B7280]">Compte debite</span><span className="font-semibold text-[#090927]">{accountsLoading ? "Chargement des comptes..." : selectedDebitAccount ? `${selectedDebitAccount.name} - ${selectedDebitAccount.last4}` : accountsError ? "Impossible de charger les comptes." : "Aucun compte disponible."}</span></div>
                   <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-4"><span className="text-[#6B7280]">Type</span><span className="font-semibold text-[#090927]">{selectedTransferType.label}</span></div>
                   <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-4"><span className="text-[#6B7280]">IBAN</span><span className="font-semibold text-[#090927]">{selectedBeneficiary.iban}</span></div>
                   <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-4"><span className="text-[#6B7280]">Montant</span><span className="font-bold text-[#050033]">{totalFormatted}</span></div>
@@ -513,7 +601,9 @@ export default function DesktopTransfers() {
                   <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-4"><span className="text-[#6B7280]">Frais</span><span className="font-bold text-[#7AA600]">0,00 EUR</span></div>
                   <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-4"><span className="text-[#6B7280]">Total</span><span className="text-[20px] font-bold text-[#050033]">{totalFormatted}</span></div>
                 </div>
-                <button type="button" onClick={openRecap} className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] bg-[#050033] text-[15px] font-bold text-white">Continuer <ChevronRight size={18} /></button>
+                <button type="button" onClick={openRecap} disabled={isAccountSelectionUnavailable} className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] bg-[#050033] text-[15px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">Continuer <ChevronRight size={18} /></button>
+                {accountsError ? <p className="mt-3 text-[12px] text-[#DC2626]">Impossible de charger les comptes.</p> : null}
+                {!accountsLoading && !accountsError && !selectedDebitAccount ? <p className="mt-3 text-[12px] text-[#6B7280]">Aucun compte disponible.</p> : null}
                 <p className="mt-4 text-[12px] leading-[1.45] text-[#6B7280]">Verifiez attentivement les informations avant de continuer.</p>
               </Card>
 
@@ -556,7 +646,7 @@ export default function DesktopTransfers() {
             <p className="mt-1 text-[14px] text-[#6B7280]">Verifiez les informations avant validation.</p>
             <div className="mt-5 grid grid-cols-12 gap-5">
               <div className="col-span-8 space-y-3 rounded-[16px] border border-[#E5E7EB] p-4 text-[14px]">
-                <div className="flex items-start justify-between"><span className="flex items-center gap-2 text-[#6B7280]"><Wallet size={16} />Compte debite</span><span className="text-right font-semibold text-[#090927]">{selectedDebitAccount.name}<br />{selectedDebitAccount.iban}<br />Solde : {selectedDebitAccount.balance}</span></div>
+                <div className="flex items-start justify-between"><span className="flex items-center gap-2 text-[#6B7280]"><Wallet size={16} />Compte debite</span><span className="text-right font-semibold text-[#090927]">{selectedDebitAccount?.name ?? ""}<br />{selectedDebitAccount?.iban ?? ""}<br />Solde : {selectedDebitAccount?.balance ?? ""}</span></div>
                 <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-3"><span className="flex items-center gap-2 text-[#6B7280]"><Clock3 size={16} />Type de virement</span><span className="font-semibold text-[#090927]">{selectedTransferType.label}</span></div>
                 <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-3"><span className="flex items-center gap-2 text-[#6B7280]"><User size={16} />Beneficiaire</span><span className="font-semibold text-[#090927]">{selectedBeneficiary.name} - {selectedBeneficiary.type}</span></div>
                 <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-3"><span className="flex items-center gap-2 text-[#6B7280]"><Landmark size={16} />Banque</span><span className="font-semibold text-[#090927]">{selectedBeneficiary.bank}</span></div>
@@ -587,7 +677,7 @@ export default function DesktopTransfers() {
         <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-[#050033]/40 p-4">
           <div role="dialog" aria-modal="true" className="w-full max-w-3xl rounded-[24px] border border-[#E5E7EB] bg-white p-6 shadow-2xl">
             <div className="text-center"><span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#9ACD00] text-white"><CheckCircle2 size={34} /></span><h2 className="mt-3 text-[24px] font-bold text-[#090927]">Virement effectue avec succes</h2><p className="mt-1 text-[14px] text-[#6B7280]">Virement effectue avec succes.</p><p className="text-[13px] text-[#6B7280]">Recu prepare pour consultation.</p></div>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-[14px]"><p><span className="text-[#6B7280]">Reference</span><br /><span className="font-semibold text-[#090927]">{finalReference}</span></p><p><span className="text-[#6B7280]">Date</span><br /><span className="font-semibold text-[#090927]">{(validatedAt ?? new Date()).toLocaleDateString("fr-FR")}</span></p><p><span className="text-[#6B7280]">Heure</span><br /><span className="font-semibold text-[#090927]">{(validatedAt ?? new Date()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span></p><p><span className="text-[#6B7280]">Date d&apos;execution</span><br /><span className="font-semibold text-[#090927]">{executionDate}</span></p><p><span className="text-[#6B7280]">Compte debite</span><br /><span className="font-semibold text-[#090927]">{selectedDebitAccount.name}</span></p><p><span className="text-[#6B7280]">IBAN compte debite</span><br /><span className="font-semibold text-[#090927]">{maskIban(selectedDebitAccount.iban)}</span></p><p><span className="text-[#6B7280]">Type de virement</span><br /><span className="font-semibold text-[#090927]">{selectedTransferType.label}</span></p><p><span className="text-[#6B7280]">Beneficiaire</span><br /><span className="font-semibold text-[#090927]">{selectedBeneficiary.name}</span></p><p><span className="text-[#6B7280]">Banque</span><br /><span className="font-semibold text-[#090927]">{selectedBeneficiary.bank}</span></p><p><span className="text-[#6B7280]">IBAN beneficiaire</span><br /><span className="font-semibold text-[#090927]">{maskIban(selectedBeneficiary.iban)}</span></p><p><span className="text-[#6B7280]">Montant</span><br /><span className="font-semibold text-[#090927]">{totalFormatted}</span></p><p><span className="text-[#6B7280]">Frais</span><br /><span className="font-semibold text-[#7AA600]">0,00 EUR</span></p><p><span className="text-[#6B7280]">Total debite</span><br /><span className="text-[18px] font-bold text-[#050033]">{totalFormatted}</span></p></div>
+            <div className="mt-5 grid grid-cols-2 gap-3 text-[14px]"><p><span className="text-[#6B7280]">Reference</span><br /><span className="font-semibold text-[#090927]">{finalReference}</span></p><p><span className="text-[#6B7280]">Date</span><br /><span className="font-semibold text-[#090927]">{(validatedAt ?? new Date()).toLocaleDateString("fr-FR")}</span></p><p><span className="text-[#6B7280]">Heure</span><br /><span className="font-semibold text-[#090927]">{(validatedAt ?? new Date()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span></p><p><span className="text-[#6B7280]">Date d&apos;execution</span><br /><span className="font-semibold text-[#090927]">{executionDate}</span></p><p><span className="text-[#6B7280]">Compte debite</span><br /><span className="font-semibold text-[#090927]">{selectedDebitAccount?.name ?? ""}</span></p><p><span className="text-[#6B7280]">IBAN compte debite</span><br /><span className="font-semibold text-[#090927]">{maskIban(selectedDebitAccount?.iban ?? "")}</span></p><p><span className="text-[#6B7280]">Type de virement</span><br /><span className="font-semibold text-[#090927]">{selectedTransferType.label}</span></p><p><span className="text-[#6B7280]">Beneficiaire</span><br /><span className="font-semibold text-[#090927]">{selectedBeneficiary.name}</span></p><p><span className="text-[#6B7280]">Banque</span><br /><span className="font-semibold text-[#090927]">{selectedBeneficiary.bank}</span></p><p><span className="text-[#6B7280]">IBAN beneficiaire</span><br /><span className="font-semibold text-[#090927]">{maskIban(selectedBeneficiary.iban)}</span></p><p><span className="text-[#6B7280]">Montant</span><br /><span className="font-semibold text-[#090927]">{totalFormatted}</span></p><p><span className="text-[#6B7280]">Frais</span><br /><span className="font-semibold text-[#7AA600]">0,00 EUR</span></p><p><span className="text-[#6B7280]">Total debite</span><br /><span className="text-[18px] font-bold text-[#050033]">{totalFormatted}</span></p></div>
             {emailStatus !== "idle" ? <div className="mt-4 rounded-[12px] border border-[#E5E7EB] bg-[#F8F9FB] p-3 text-[13px] text-[#6B7280]"><p className="font-semibold text-[#090927]">{emailStatus === "sending" ? t("transfers.emailNotice.sending") : emailStatus === "sent" ? t("transfers.emailNotice.sent") : t("transfers.emailNotice.failed")}</p>{emailStatus === "sent" ? <p className="mt-1">{t("transfers.emailNotice.sentTo")} : {selectedBeneficiary.email}</p> : null}{emailError ? <p className="mt-1 text-[12px] text-[#DC2626]">{emailError}</p> : null}</div> : null}
             <div className="mt-6 flex flex-wrap justify-end gap-2"><button type="button" onClick={downloadReceipt} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Telecharger le recu</button><button type="button" onClick={() => { setShowSuccess(false); setAmount(""); setReason(""); setTemporaryReference(""); setFinalReference(""); setValidatedAt(null); resetEmailNotice(); setSubmitError(null); setIsSubmitting(false); }} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Faire un autre virement</button><button type="button" onClick={() => { setShowSuccess(false); setValidatedAt(null); resetEmailForNewTransfer(); }} className="h-10 rounded-[10px] bg-[#050033] px-4 text-[14px] font-semibold text-white">Fermer</button></div>
           </div>
@@ -598,7 +688,7 @@ export default function DesktopTransfers() {
         <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-[#050033]/40 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-[#E5E7EB] bg-white p-5">
             <div className="flex items-center justify-between"><h2 className="text-[20px] font-bold text-[#090927]">Choisir le compte a debiter</h2><button type="button" aria-label="Fermer" onClick={() => setShowAccountPicker(false)}><X size={18} /></button></div>
-            <div className="mt-4 space-y-2">{debitAccounts.map((account) => { const isSelected = selectedDebitAccountId === account.id; return <button key={account.id} type="button" aria-pressed={isSelected} aria-label={`Selectionner ${account.name}`} onClick={() => { resetEmailForNewTransfer(); setSelectedDebitAccountId(account.id); setShowAccountPicker(false); }} className={`flex w-full items-center justify-between rounded-[12px] border px-3 py-3 text-left ${isSelected ? "border-[#9ACD00] bg-[#F7FBEA]" : "border-[#E5E7EB] bg-white"}`}><span><span className="block text-[14px] font-semibold text-[#090927]">{account.name}</span><span className="block text-[12px] text-[#6B7280]">{account.balance} - {maskIban(account.iban)}</span></span>{isSelected ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>; })}</div>
+            <div className="mt-4 space-y-2">{accountsLoading ? <p className="text-[14px] text-[#6B7280]">Chargement des comptes...</p> : accountsError ? <p className="text-[14px] text-[#DC2626]">Impossible de charger les comptes.</p> : debitAccounts.length === 0 ? <p className="text-[14px] text-[#6B7280]">Aucun compte disponible.</p> : debitAccounts.map((account) => { const isSelected = selectedDebitAccountId === account.id; return <button key={account.id} type="button" aria-pressed={isSelected} aria-label={`Selectionner ${account.name}`} onClick={() => { resetEmailForNewTransfer(); setSelectedDebitAccountId(account.id); setShowAccountPicker(false); }} className={`flex w-full items-center justify-between rounded-[12px] border px-3 py-3 text-left ${isSelected ? "border-[#9ACD00] bg-[#F7FBEA]" : "border-[#E5E7EB] bg-white"}`}><span><span className="block text-[14px] font-semibold text-[#090927]">{account.name}</span><span className="block text-[12px] text-[#6B7280]">{account.balance} - {maskIban(account.iban)}</span></span>{isSelected ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>; })}</div>
           </div>
         </div>
       ) : null}
