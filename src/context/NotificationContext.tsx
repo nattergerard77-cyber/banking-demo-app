@@ -9,6 +9,7 @@ const READ_STATE_KEY = "notifications.readState";
 const PREFERENCES_KEY = "notifications.preferences";
 const LOGIN_NOTIFICATIONS_KEY = "notifications.loginItems";
 const TRANSFER_NOTIFICATIONS_KEY = "notifications.transferItems";
+const DELETED_IDS_KEY = "notifications.deletedIds";
 
 const defaultPreferences: NotificationPreferences = {
   security: true,
@@ -25,6 +26,7 @@ type NotificationContextValue = {
   securityCount: number;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
+  deleteNotification: (id: string) => void;
   addLoginNotification: () => void;
   addTransferNotification: (payload: TransferNotificationPayload) => void;
   resetNotifications: () => void;
@@ -85,6 +87,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState<NotificationPreferences>(defaultPreferences);
   const [activeFilter, setActiveFilter] = useState<NotificationFilter>("all");
   const [storageReady, setStorageReady] = useState(false);
+  const [deletedIds, setDeletedIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    return readArray<string>(DELETED_IDS_KEY);
+  });
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -109,6 +115,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!storageReady || typeof window === "undefined") return;
+    window.localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(deletedIds));
+  }, [deletedIds, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || typeof window === "undefined") return;
     const loginNotifications = notifications.filter((item) => item.id.startsWith("login-connection-"));
     window.localStorage.setItem(LOGIN_NOTIFICATIONS_KEY, JSON.stringify(loginNotifications));
   }, [notifications, storageReady]);
@@ -124,15 +135,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
   }, [preferences, storageReady]);
 
-  const unreadCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
-  const totalCount = notifications.length;
-  const securityCount = useMemo(() => notifications.filter((item) => item.category === "security").length, [notifications]);
+  const visibleNotifications = useMemo(
+    () => notifications.filter((item) => !deletedIds.includes(item.id)),
+    [notifications, deletedIds],
+  );
+
+  const unreadCount = useMemo(() => visibleNotifications.filter((item) => !item.read).length, [visibleNotifications]);
+  const totalCount = visibleNotifications.length;
+  const securityCount = useMemo(() => visibleNotifications.filter((item) => item.category === "security").length, [visibleNotifications]);
 
   const filteredNotifications = useMemo(() => {
-    if (activeFilter === "all") return notifications;
-    if (activeFilter === "unread") return notifications.filter((item) => !item.read);
-    return notifications.filter((item) => item.category === activeFilter);
-  }, [activeFilter, notifications]);
+    if (activeFilter === "all") return visibleNotifications;
+    if (activeFilter === "unread") return visibleNotifications.filter((item) => !item.read);
+    return visibleNotifications.filter((item) => item.category === activeFilter);
+  }, [activeFilter, visibleNotifications]);
 
   const markAsRead = (id: string) => {
     setNotifications((current) => current.map((item) => item.id === id ? { ...item, read: true } : item));
@@ -140,6 +156,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAllAsRead = () => {
     setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+  };
+
+  const deleteNotification = (id: string) => {
+    setDeletedIds((prev) => [...prev, id]);
   };
 
   const addLoginNotification = () => {
@@ -205,11 +225,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const resetNotifications = () => {
     setNotifications(initialNotifications);
+    setDeletedIds([]);
     setPreferences(defaultPreferences);
     setActiveFilter("all");
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(LOGIN_NOTIFICATIONS_KEY);
       window.localStorage.removeItem(TRANSFER_NOTIFICATIONS_KEY);
+      window.localStorage.removeItem(DELETED_IDS_KEY);
     }
   };
 
@@ -218,13 +240,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   };
 
   const value: NotificationContextValue = {
-    notifications,
+    notifications: visibleNotifications,
     filteredNotifications,
     unreadCount,
     totalCount,
     securityCount,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
     addLoginNotification,
     addTransferNotification,
     resetNotifications,

@@ -15,6 +15,7 @@ import {
   Search,
   ShieldCheck,
   Smartphone,
+  Trash2,
   Wallet,
   ChevronRight,
 } from "lucide-react";
@@ -86,11 +87,13 @@ function Card({
 function NotificationItem({
   notification,
   onSelect,
+  onDelete,
   selected,
   t,
 }: {
   notification: BankNotificationItem;
   onSelect: () => void;
+  onDelete?: (e: React.MouseEvent) => void;
   selected: boolean;
   t: (key: string) => string;
 }) {
@@ -101,7 +104,7 @@ function NotificationItem({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full border-b border-[#E5E7EB] p-4 text-left last:border-b-0 interactive-row ${
+      className={`group w-full border-b border-[#E5E7EB] p-4 text-left last:border-b-0 interactive-row ${
         selected ? "bg-[#FBFFF1]" : "bg-white"
       }`}
     >
@@ -135,9 +138,21 @@ function NotificationItem({
               {t(`notifications.categories.${notification.category}`)}
             </span>
 
-            {!notification.read && (
-              <span className="h-2 w-2 rounded-full bg-[#9ACD00]" />
-            )}
+            <span className="flex items-center gap-2">
+              {!notification.read && (
+                <span className="h-2 w-2 rounded-full bg-[#9ACD00]" />
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  aria-label="Supprimer la notification"
+                  onClick={onDelete}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[#6B7280] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[#DC2626]"
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
+            </span>
           </span>
         </span>
       </div>
@@ -191,6 +206,7 @@ export function DesktopNotifications() {
     securityCount,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
     preferences: notificationPreferences,
     setPreference,
     activeFilter,
@@ -306,6 +322,14 @@ export function DesktopNotifications() {
                   onSelect={() => {
                     setSelected(notification.id);
                     markAsRead(notification.id);
+                  }}
+                  onDelete={(e) => {
+                    e.stopPropagation();
+                    deleteNotification(notification.id);
+                    if (selected === notification.id) {
+                      setSelected(filtered[0]?.id ?? "");
+                    }
+                    setToast(t("notifications.deleted"));
                   }}
                 />
               ))}

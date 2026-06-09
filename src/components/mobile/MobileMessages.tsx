@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Bell,
   CheckCircle2,
@@ -14,6 +14,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 
 import MobileShell from "./MobileShell";
@@ -101,13 +102,15 @@ function MobileCard({
 }
 
 export function MobileMessages() {
-  const { allMessages, unreadCount, markAsRead } = useMessages();
+  const { allMessages, unreadCount, markAsRead, deleteMessage } = useMessages();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string>(allMessages[0]?.id ?? "");
   const [folder, setFolder] = useState("Boîte de réception");
   const [composeOpen, setComposeOpen] = useState(false);
   const [reply, setReply] = useState("");
   const [toast, setToast] = useState("");
+  const [swipedMessageId, setSwipedMessageId] = useState<string | null>(null);
+  const touchStart = useRef<{ x: number; y: number; id: string } | null>(null);
   const filtered = useMemo(() => {
     const byFolder =
       folder === "Non lus"
@@ -183,49 +186,86 @@ export function MobileMessages() {
 
           <div className="space-y-3">
             {filtered.map((message) => (
-              <button
-                key={message.id}
-                type="button"
-                onClick={() => {
-                  setSelectedId(message.id);
-                  markAsRead(message.id);
-                }}
-                className={`flex w-full items-start gap-3 rounded-[14px] border p-3 text-left ${
-                  selected.id === message.id
-                    ? "border-2 border-[#9ACD00] bg-white"
-                    : "border-[#E5E7EB] bg-white"
-                }`}
-              >
-                <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                    message.unread
-                      ? "bg-[#050033] text-white"
-                      : "bg-[#F3F4F6] text-[#050033]"
-                  }`}
+              <div key={message.id} className="flex items-stretch gap-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (swipedMessageId) { setSwipedMessageId(null); return; }
+                    setSelectedId(message.id);
+                    markAsRead(message.id);
+                  }}
+                  onTouchStart={(e) => {
+                    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, id: message.id };
+                  }}
+                  onTouchMove={(e) => {
+                    if (!touchStart.current || touchStart.current.id !== message.id) return;
+                    const deltaX = e.touches[0].clientX - touchStart.current.x;
+                    const deltaY = e.touches[0].clientY - touchStart.current.y;
+                    if (Math.abs(deltaX) > Math.abs(deltaY) * 1.5 && deltaX > 50) {
+                      setSwipedMessageId(message.id);
+                      touchStart.current = null;
+                    }
+                  }}
+                  onTouchEnd={() => {
+                    if (touchStart.current?.id === message.id) {
+                      touchStart.current = null;
+                    }
+                  }}
+                  className={`flex w-full items-start gap-3 rounded-[14px] border p-3 text-left transition-all ${
+                    selected.id === message.id
+                      ? "border-2 border-[#9ACD00] bg-white"
+                      : "border-[#E5E7EB] bg-white"
+                  } ${swipedMessageId === message.id ? "rounded-r-none" : ""}`}
                 >
-                  <Mail size={18} />
-                </span>
+                  <span
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                      message.unread
+                        ? "bg-[#050033] text-white"
+                        : "bg-[#F3F4F6] text-[#050033]"
+                    }`}
+                  >
+                    <Mail size={18} />
+                  </span>
 
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-start justify-between gap-2">
-                    <span className="truncate text-[14px] font-bold text-[#090927]">
-                      {message.title}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-start justify-between gap-2">
+                      <span className="truncate text-[14px] font-bold text-[#090927]">
+                        {message.title}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-[#6B7280]">
+                        {message.date}
+                      </span>
                     </span>
-                    <span className="shrink-0 text-[11px] text-[#6B7280]">
-                      {message.date}
+
+                    <span className="mt-1 block text-[12px] font-semibold text-[#050033]">
+                      {message.sender}
+                    </span>
+                    <span className="mt-1 line-clamp-2 text-[12px] leading-[1.35] text-[#6B7280]">
+                      {message.preview}
                     </span>
                   </span>
 
-                  <span className="mt-1 block text-[12px] font-semibold text-[#050033]">
-                    {message.sender}
-                  </span>
-                  <span className="mt-1 line-clamp-2 text-[12px] leading-[1.35] text-[#6B7280]">
-                    {message.preview}
-                  </span>
-                </span>
+                  <ChevronRight size={17} className="mt-3 text-[#050033]" />
+                </button>
 
-                <ChevronRight size={17} className="mt-3 text-[#050033]" />
-              </button>
+                {swipedMessageId === message.id && (
+                  <button
+                    type="button"
+                    aria-label="Supprimer le message"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteMessage(message.id);
+                      setSwipedMessageId(null);
+                      if (selectedId === message.id) setSelectedId("");
+                      setToast("Message supprimé");
+                    }}
+                    className="flex shrink-0 items-center gap-1.5 rounded-r-[14px] bg-[#DC2626] px-3 text-[12px] font-bold text-white"
+                  >
+                    <Trash2 size={14} />
+                    Supprimer
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </MobileCard>

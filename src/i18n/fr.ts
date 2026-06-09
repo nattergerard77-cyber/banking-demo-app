@@ -296,7 +296,9 @@ const fr = {
     subtitle: "Échangez avec votre conseiller.",
     newMessage: "Nouveau message",
     advisor: "Votre conseiller",
-    advisorName: "Thomas Leroy"
+    advisorName: "Thomas Leroy",
+    delete: "Supprimer",
+    deleted: "Message supprimé"
   },
   notifications: {
     title: "Notifications",
@@ -332,6 +334,7 @@ const fr = {
     selected: "Notification sélectionnée",
     empty: "Aucune notification ne correspond à votre recherche.",
     markedAllRead: "Notifications marquées comme lues.",
+    deleted: "Notification supprimée",
     preferenceUpdated: "Préférence mise à jour.",
     recentAlerts: "Alertes récentes",
     active: "actives",

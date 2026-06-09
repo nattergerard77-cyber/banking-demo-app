@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeftRight,
   Bell,
@@ -13,6 +13,7 @@ import {
   Search,
   ShieldCheck,
   Smartphone,
+  Trash2,
   Wallet,
 } from "lucide-react";
 
@@ -66,15 +67,18 @@ export function MobileNotifications() {
     securityCount,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
     preferences,
     setPreference,
     activeFilter,
     setActiveFilter,
   } = useNotifications();
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState(notifications[0].id);
+  const [selectedId, setSelectedId] = useState(notifications[0]?.id ?? "");
   const [modal, setModal] = useState<null | "filter" | "manage">(null);
   const [toast, setToast] = useState("");
+  const [swipedNotificationId, setSwipedNotificationId] = useState<string | null>(null);
+  const touchStart = useRef<{ x: number; y: number; id: string } | null>(null);
 
   const filtered = useMemo(
     () =>
@@ -175,50 +179,87 @@ export function MobileNotifications() {
               const Icon = categoryIcons[notification.category];
 
               return (
-                <button
-                  key={notification.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(notification.id);
-                    markAsRead(notification.id);
-                  }}
-                  className={`flex w-full items-start gap-3 rounded-[14px] border p-3 text-left ${
-                    selected.id === notification.id
-                      ? "border-2 border-[#9ACD00] bg-white"
-                      : "border-[#E5E7EB] bg-white"
-                  }`}
-                >
-                  <span
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                      !notification.read
-                        ? "bg-[#050033] text-white"
-                        : "bg-[#F3F4F6] text-[#050033]"
-                    }`}
+                <div key={notification.id} className="flex items-stretch gap-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (swipedNotificationId) { setSwipedNotificationId(null); return; }
+                      setSelectedId(notification.id);
+                      markAsRead(notification.id);
+                    }}
+                    onTouchStart={(e) => {
+                      touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, id: notification.id };
+                    }}
+                    onTouchMove={(e) => {
+                      if (!touchStart.current || touchStart.current.id !== notification.id) return;
+                      const deltaX = e.touches[0].clientX - touchStart.current.x;
+                      const deltaY = e.touches[0].clientY - touchStart.current.y;
+                      if (Math.abs(deltaX) > Math.abs(deltaY) * 1.5 && deltaX > 50) {
+                        setSwipedNotificationId(notification.id);
+                        touchStart.current = null;
+                      }
+                    }}
+                    onTouchEnd={() => {
+                      if (touchStart.current?.id === notification.id) {
+                        touchStart.current = null;
+                      }
+                    }}
+                    className={`flex w-full items-start gap-3 rounded-[14px] border p-3 text-left transition-all ${
+                      selected.id === notification.id
+                        ? "border-2 border-[#9ACD00] bg-white"
+                        : "border-[#E5E7EB] bg-white"
+                    } ${swipedNotificationId === notification.id ? "rounded-r-none" : ""}`}
                   >
-                    <Icon size={18} />
-                  </span>
+                    <span
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                        !notification.read
+                          ? "bg-[#050033] text-white"
+                          : "bg-[#F3F4F6] text-[#050033]"
+                      }`}
+                    >
+                      <Icon size={18} />
+                    </span>
 
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-start justify-between gap-2">
-                      <span className="truncate text-[14px] font-bold text-[#090927]">
-                        {t(notification.titleKey)}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-start justify-between gap-2">
+                        <span className="truncate text-[14px] font-bold text-[#090927]">
+                          {t(notification.titleKey)}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-[#6B7280]">
+                          {t(notification.dateLabelKey)}{notification.time ? ` ${t("notifications.at")} ${notification.time}` : ""}
+                        </span>
                       </span>
-                      <span className="shrink-0 text-[11px] text-[#6B7280]">
-                        {t(notification.dateLabelKey)}{notification.time ? ` ${t("notifications.at")} ${notification.time}` : ""}
+
+                      <span className="mt-1 block text-[12px] leading-[1.35] text-[#6B7280]">
+                        {t(notification.descriptionKey)}
+                      </span>
+
+                      <span className="mt-2 inline-flex rounded-full bg-[#F3F4F6] px-3 py-1 text-[11px] font-semibold text-[#050033]">
+                        {t(`notifications.categories.${notification.category}`)}
                       </span>
                     </span>
 
-                    <span className="mt-1 block text-[12px] leading-[1.35] text-[#6B7280]">
-                      {t(notification.descriptionKey)}
-                    </span>
+                    <ChevronRight size={17} className="mt-3 text-[#050033]" />
+                  </button>
 
-                    <span className="mt-2 inline-flex rounded-full bg-[#F3F4F6] px-3 py-1 text-[11px] font-semibold text-[#050033]">
-                      {t(`notifications.categories.${notification.category}`)}
-                    </span>
-                  </span>
-
-                  <ChevronRight size={17} className="mt-3 text-[#050033]" />
-                </button>
+                  {swipedNotificationId === notification.id && (
+                    <button
+                      type="button"
+                      aria-label="Supprimer la notification"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteNotification(notification.id);
+                        setSwipedNotificationId(null);
+                        if (selectedId === notification.id) setSelectedId("");
+                        setToast(t("notifications.deleted"));
+                      }}
+                      className="flex shrink-0 items-center gap-1.5 rounded-r-[14px] bg-[#DC2626] px-3 text-[12px] font-bold text-white"
+                    >
+                      <Trash2 size={14} />
+                      Supprimer
+                    </button>
+                  )}
+                </div>
               );
             })}
             {filtered.length === 0 ? (

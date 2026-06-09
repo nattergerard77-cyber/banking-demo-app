@@ -6,6 +6,7 @@ import type { BankMessage, BankMessageInfo } from "@/types/message";
 
 const STORAGE_KEY = "messages.transferItems";
 const READ_KEY = "messages.readState";
+const DELETED_IDS_KEY = "messages.deletedIds";
 
 const initialMessages: BankMessage[] = [
   {
@@ -143,6 +144,25 @@ function writeReadState(state: Record<string, boolean>) {
   }
 }
 
+function readDeletedIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = window.localStorage.getItem(DELETED_IDS_KEY);
+    return stored ? (JSON.parse(stored) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDeletedIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(ids));
+  } catch {
+    /* noop */
+  }
+}
+
 export type AddTransferMessagePayload = {
   beneficiary: string;
   amount: string;
@@ -159,6 +179,7 @@ type MessageContextValue = {
   unreadMessagesCount: number;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
+  deleteMessage: (id: string) => void;
   addTransferMessage: (payload: AddTransferMessagePayload) => void;
 };
 
@@ -173,14 +194,20 @@ export function MessageProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined") return {};
     return readReadState();
   });
+  const [deletedIds, setDeletedIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    return readDeletedIds();
+  });
 
   const allMessages = useMemo(() => {
     const merged = [...dynamicMessages, ...initialMessages];
-    return merged.map((m) => ({
-      ...m,
-      unread: readState[m.id] === undefined ? m.unread : !readState[m.id],
-    }));
-  }, [dynamicMessages, readState]);
+    return merged
+      .filter((m) => !deletedIds.includes(m.id))
+      .map((m) => ({
+        ...m,
+        unread: readState[m.id] === undefined ? m.unread : !readState[m.id],
+      }));
+  }, [dynamicMessages, readState, deletedIds]);
 
   const unreadCount = useMemo(() => allMessages.filter((m) => m.unread).length, [allMessages]);
 
@@ -205,6 +232,14 @@ export function MessageProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, [allMessages]);
+
+  const deleteMessage = useCallback((id: string) => {
+    setDeletedIds((prev) => {
+      const next = [...prev, id];
+      writeDeletedIds(next);
+      return next;
+    });
+  }, []);
 
   const addTransferMessage = useCallback((payload: AddTransferMessagePayload) => {
     const messageId = `transfer-message-${payload.reference}`;
@@ -244,8 +279,8 @@ export function MessageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ allMessages, unreadCount, unreadMessagesCount: unreadCount, markAsRead, markAllAsRead, addTransferMessage }),
-    [allMessages, unreadCount, markAsRead, markAllAsRead, addTransferMessage],
+    () => ({ allMessages, unreadCount, unreadMessagesCount: unreadCount, markAsRead, markAllAsRead, deleteMessage, addTransferMessage }),
+    [allMessages, unreadCount, markAsRead, markAllAsRead, deleteMessage, addTransferMessage],
   );
 
   return <MessageContext.Provider value={value}>{children}</MessageContext.Provider>;

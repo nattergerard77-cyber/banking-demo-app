@@ -49,13 +49,15 @@ function Card({
 
 function MessageRow({
   message,
+  onDelete,
 }: {
   message: BankMessage;
+  onDelete?: (e: React.MouseEvent) => void;
 }) {
   return (
     <button
       type="button"
-      className={`w-full border-b border-[#E5E7EB] p-4 text-left last:border-b-0 ${
+      className={`group w-full border-b border-[#E5E7EB] p-4 text-left last:border-b-0 ${
         message.active ? "bg-[#FBFFF1]" : "bg-white"
       }`}
     >
@@ -93,9 +95,21 @@ function MessageRow({
               {message.category}
             </span>
 
-            {message.unread && (
-              <span className="h-2 w-2 rounded-full bg-[#9ACD00]" />
-            )}
+            <span className="flex items-center gap-2">
+              {message.unread && (
+                <span className="h-2 w-2 rounded-full bg-[#9ACD00]" />
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  aria-label="Supprimer le message"
+                  onClick={onDelete}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[#6B7280] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[#DC2626]"
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
+            </span>
           </span>
         </span>
       </div>
@@ -104,7 +118,7 @@ function MessageRow({
 }
 
 export function DesktopMessages() {
-  const { allMessages, unreadCount, markAsRead } = useMessages();
+  const { allMessages, unreadCount, markAsRead, deleteMessage } = useMessages();
   const [currentFolder, setCurrentFolder] = useState(folders[0].label);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string>(allMessages[0]?.id ?? "");
@@ -217,7 +231,17 @@ export function DesktopMessages() {
                   setSelectedId(message.id);
                   markAsRead(message.id);
                 }}>
-                  <MessageRow message={{ ...message, active: selected.id === message.id }} />
+                  <MessageRow
+                    message={{ ...message, active: selected.id === message.id }}
+                    onDelete={(e) => {
+                      e.stopPropagation();
+                      deleteMessage(message.id);
+                      if (selectedId === message.id) {
+                        setSelectedId("");
+                      }
+                      setToast("Message supprimé");
+                    }}
+                  />
                 </div>
               ))}
             </div>
