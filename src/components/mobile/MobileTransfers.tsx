@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Building2, Check, CheckCircle2, ChevronRight, Clock3, CreditCard, Download, Euro, FileText, Plus, ShieldCheck, User, Wallet, X, Zap } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
@@ -16,12 +16,51 @@ import {
 import MobileShell from "./MobileShell";
 import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
+import type { SupabaseAccount } from "@/types/supabase";
 
 type Beneficiary = { id: string; name: string; type: string; iban: string; bank: string; email: string; phone: string; initials: string };
 type TransferItem = { id: string; beneficiary: string; date: string; reason: string; amount: string; status: string; reference: string };
 
+type DebitAccountViewModel = {
+  id: string;
+  supabaseId: string;
+  name: string;
+  iban: string;
+  last4: string;
+  balance: string;
+  rawBalance: number;
+  currency: string;
+  status: string;
+};
+
+type AccountsApiResponse =
+  | { success: true; accounts: SupabaseAccount[] }
+  | { success: false; error: string };
+
 function parseAmount(value: string) { const p = Number.parseFloat(value.replace(/\s/g, "").replace(",", ".")); return Number.isFinite(p) ? p : 0; }
-function parseBalance(value: string) { return Number.parseFloat(value.replace(/\s/g, "").replace("EUR", "").replace(/\./g, "").replace(",", ".")); }
+function formatCurrency(value: number, currency = "EUR") {
+  if (!Number.isFinite(value)) return "Montant indisponible";
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency,
+  }).format(value);
+}
+
+function mapDebitAccount(account: SupabaseAccount): DebitAccountViewModel {
+  const rawBalance = Number(account.available_balance ?? account.balance ?? 0);
+
+  return {
+    id: account.code,
+    supabaseId: account.id,
+    name: account.name,
+    iban: account.iban,
+    last4: account.iban.replace(/\s+/g, "").slice(-4),
+    balance: formatCurrency(rawBalance, account.currency ?? "EUR"),
+    rawBalance: Number.isFinite(rawBalance) ? rawBalance : 0,
+    currency: account.currency ?? "EUR",
+    status: account.status,
+  };
+}
 function formatAmount(value: string) { return `${parseAmount(value).toFixed(2).replace(".", ",")} EUR`; }
 function maskIban(iban: string) { const c = iban.replace(/\s+/g, ""); return `${c.slice(0, 4)} ${c.slice(4, 8)} **** **** ${c.slice(-4)}`; }
 function generateTemporaryReference() { const n = new Date(); return `VR-${String(n.getFullYear()).slice(-2)}${String(n.getMonth() + 1).padStart(2, "0")}${String(n.getDate()).padStart(2, "0")}-${String(Math.floor(Math.random() * 9000) + 1000)}`; }
@@ -81,11 +120,9 @@ export default function MobileTransfers() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const debitAccounts = useMemo(() => [
-    { id: "current", name: t("accounts.current"), balance: "84.320,00 EUR", iban: "LU88 0019 2450 1234 5678", last4: "5678" },
-    { id: "savings", name: t("accounts.savings"), balance: "185.680,00 EUR", iban: "LU44 0019 8800 2040 3301", last4: "3301" },
-    { id: "joint", name: t("accounts.joint"), balance: "30.000,00 EUR", iban: "LU76 0019 5520 7788 1140", last4: "1140" },
-  ], [t]);
+  const [debitAccounts, setDebitAccounts] = useState<DebitAccountViewModel[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
 
   const transferTypes = useMemo(() => [
     { id: "instant", label: t("transfers.types.instant"), description: t("transfers.types.instantDesc") },
@@ -101,18 +138,72 @@ export default function MobileTransfers() {
   ], [t, now]);
 
   const selectedBeneficiary = useMemo(() => beneficiaries.find((b) => b.id === selectedBeneficiaryId) ?? beneficiaries[0], [selectedBeneficiaryId, beneficiaries]);
-  const selectedDebitAccount = useMemo(() => debitAccounts.find((a) => a.id === selectedDebitAccountId) ?? debitAccounts[0], [selectedDebitAccountId, debitAccounts]);
+  const selectedDebitAccount = useMemo(() => debitAccounts.find((a) => a.id === selectedDebitAccountId) ?? debitAccounts[0] ?? null, [selectedDebitAccountId, debitAccounts]);
   const selectedTransferType = useMemo(() => transferTypes.find((item) => item.id === selectedTransferTypeId) ?? transferTypes[0], [selectedTransferTypeId, transferTypes]);
   const totalFormatted = formatAmount(amount);
   const executionDate = selectedTransferTypeId === "scheduled" ? formatExecutionDate(scheduledDate) : t("common.today");
+  const isAccountSelectionUnavailable = accountsLoading || Boolean(accountsError) || !selectedDebitAccount;
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAccounts() {
+      setAccountsLoading(true);
+      setAccountsError(null);
+
+      try {
+        const response = await fetch("/api/accounts");
+        const result = (await response.json()) as AccountsApiResponse;
+
+        if (!response.ok || !result.success) {
+          throw new Error("ACCOUNTS_FETCH_FAILED");
+        }
+
+        if (ignore) return;
+
+        const nextAccounts = result.accounts.map(mapDebitAccount);
+        setDebitAccounts(nextAccounts);
+        setSelectedDebitAccountId((current) => {
+          if (nextAccounts.some((account) => account.id === current)) return current;
+          const currentAccount = nextAccounts.find((account) => account.id === "current");
+          return currentAccount?.id ?? nextAccounts[0]?.id ?? "";
+        });
+      } catch {
+        if (!ignore) {
+          setDebitAccounts([]);
+          setAccountsError("Impossible de charger les comptes.");
+        }
+      } finally {
+        if (!ignore) setAccountsLoading(false);
+      }
+    }
+
+    void loadAccounts();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   function selectTransferType(typeId: string) { resetEmailForNewTransfer(); setSelectedTransferTypeId(typeId); setIsRecurring(typeId === "recurring"); if (typeId === "scheduled" && !scheduledDate) setScheduledDate(todayInputValue()); setShowTypePicker(false); }
 
   function openRecap() {
     setSubmitError(null);
+    if (accountsLoading) {
+      setToast("Chargement des comptes...");
+      return;
+    }
+    if (accountsError) {
+      setToast("Impossible de charger les comptes.");
+      return;
+    }
+    if (!selectedDebitAccount) {
+      setToast("Aucun compte disponible.");
+      return;
+    }
     const parsedAmount = parseAmount(amount);
     if (!amount.trim() || parsedAmount <= 0) { setAmountError(t("transfers.errors.invalidAmount")); return; }
-    if (parsedAmount > parseBalance(selectedDebitAccount.balance)) { setAmountError(t("transfers.errors.amountExceedsBalance")); return; }
+    if (parsedAmount > selectedDebitAccount.rawBalance) { setAmountError(t("transfers.errors.amountExceedsBalance")); return; }
     if (selectedTransferTypeId === "scheduled" && (!scheduledDate || scheduledDate < todayInputValue())) { setDateError(t("transfers.errors.invalidExecutionDate")); return; }
     setAmountError(""); setDateError(""); if (!temporaryReference) setTemporaryReference(generateTemporaryReference()); setShowRecap(true);
   }
@@ -224,7 +315,7 @@ export default function MobileTransfers() {
       setShowRecap(false);
       setShowSuccess(true);
       addTransferNotification({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference: supabaseReference });
-      addTransferMessage({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference: supabaseReference, accountName: selectedDebitAccount.name, executionDate, validationDate: validationDate.toLocaleDateString("fr-FR"), validationTime: validationDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) });
+      addTransferMessage({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference: supabaseReference, accountName: selectedDebitAccount?.name ?? "", executionDate, validationDate: validationDate.toLocaleDateString("fr-FR"), validationTime: validationDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) });
       sendBeneficiaryNotice(supabaseReference, validationDate);
     } catch {
       setSubmitError("Une erreur réseau est survenue. Veuillez réessayer.");
@@ -239,8 +330,8 @@ export default function MobileTransfers() {
       generateTransferPdf({
         holderName: "Frederico Di Mario",
         holderEmail: "fredericodimario8@gmail.com",
-        debitAccountName: selectedDebitAccount.name,
-        debitIban: selectedDebitAccount.iban,
+        debitAccountName: selectedDebitAccount?.name ?? "",
+        debitIban: selectedDebitAccount?.iban ?? "",
         beneficiaryName: selectedBeneficiary.name,
         beneficiaryBank: selectedBeneficiary.bank,
         beneficiaryIban: selectedBeneficiary.iban,
@@ -256,7 +347,7 @@ export default function MobileTransfers() {
         total: totalFormatted,
       });
     } catch {
-      const content = [`Recu de virement`, `Reference: ${finalReference}`, `Date: ${receiptDate.toLocaleDateString("fr-FR")}`, `Heure: ${receiptDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`, `Compte debite: ${selectedDebitAccount.name}`, `IBAN compte debite: ${selectedDebitAccount.iban}`, `Type de virement: ${selectedTransferType.label}`, `Date d'execution: ${executionDate}`, `Beneficiaire: ${selectedBeneficiary.name}`, `Banque: ${selectedBeneficiary.bank}`, `IBAN beneficiaire: ${selectedBeneficiary.iban}`, `Montant: ${totalFormatted}`, `Frais: 0,00 EUR`, `Total: ${totalFormatted}`, `Motif: ${reason || "-"}`].join("\n");
+       const content = [`Recu de virement`, `Reference: ${finalReference}`, `Date: ${receiptDate.toLocaleDateString("fr-FR")}`, `Heure: ${receiptDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`, `Compte debite: ${selectedDebitAccount?.name ?? ""}`, `IBAN compte debite: ${selectedDebitAccount?.iban ?? ""}`, `Type de virement: ${selectedTransferType.label}`, `Date d'execution: ${executionDate}`, `Beneficiaire: ${selectedBeneficiary.name}`, `Banque: ${selectedBeneficiary.bank}`, `IBAN beneficiaire: ${selectedBeneficiary.iban}`, `Montant: ${totalFormatted}`, `Frais: 0,00 EUR`, `Total: ${totalFormatted}`, `Motif: ${reason || "-"}`].join("\n");
       const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -274,7 +365,7 @@ export default function MobileTransfers() {
           <Card className="p-4">
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3"><button type="button" onClick={() => setShowAdd(true)} className="flex h-11 items-center justify-center gap-2 rounded-[10px] border border-[#050033]"><Plus size={16} />{t("transfers.newBeneficiary")}</button><Link href="/virements/direct" className="flex h-11 items-center justify-center gap-2 rounded-[10px] bg-[#050033] text-white"><Zap size={16} />{t("transfers.directTransfer")}</Link></div>
-              <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("transfers.debitAccount")}</label><button type="button" onClick={() => setShowAccountPicker(true)} className="flex h-11 w-full items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[14px] font-semibold text-[#090927]"><Wallet size={18} />{selectedDebitAccount.name} - {selectedDebitAccount.balance}<ChevronRight size={16} className="ml-auto" /></button></div>
+              <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("transfers.debitAccount")}</label><button type="button" onClick={() => setShowAccountPicker(true)} className="flex h-11 w-full items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[14px] font-semibold text-[#090927]"><Wallet size={18} />{accountsLoading ? "Chargement des comptes..." : selectedDebitAccount ? `${selectedDebitAccount.name} - ${selectedDebitAccount.balance}` : accountsError ? "Impossible de charger les comptes." : "Aucun compte disponible."}<ChevronRight size={16} className="ml-auto" /></button></div>
               <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("common.type")}</label><button type="button" onClick={() => setShowTypePicker(true)} className="flex h-11 w-full items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[14px] font-semibold text-[#090927]"><Clock3 size={16} />{selectedTransferType.label}</button></div>
               {selectedTransferTypeId === "scheduled" ? <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("transfers.executionDate")}</label><input type="date" min={todayInputValue()} value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] outline-none" />{dateError ? <p className="mt-1 text-[12px] text-[#DC2626]">{dateError}</p> : null}</div> : null}
               <div className="flex gap-2 overflow-auto">{beneficiaries.map((b) => <button key={b.id} type="button" onClick={() => { resetEmailForNewTransfer(); setSelectedBeneficiaryId(b.id); }} className={`rounded-[13px] border px-3 py-2 ${selectedBeneficiaryId === b.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB]"}`}>{b.name}</button>)}</div>
@@ -283,7 +374,7 @@ export default function MobileTransfers() {
               <div className="flex items-center justify-between rounded-[14px] bg-[#F6F7F9] p-3"><span className="font-semibold">{t("transfers.recurring")}</span><DemoSwitch checked={isRecurring} onChange={setIsRecurring} label={t("common.enable")} /></div>
             </div>
           </Card>
-          <Card className="p-4"><div className="space-y-2 text-[14px]"><p className="flex justify-between"><span>{t("transfers.debitAccount")}</span><span>{selectedDebitAccount.name} - {selectedDebitAccount.last4}</span></p><p className="flex justify-between"><span>{t("transfers.beneficiary")}</span><span>{selectedBeneficiary.name}</span></p><p className="flex justify-between"><span>{t("common.amount")}</span><span>{totalFormatted}</span></p><p className="flex justify-between"><span>{t("common.date")}</span><span>{executionDate}</span></p></div><button type="button" onClick={openRecap} className="mt-4 h-11 w-full rounded-[10px] bg-[#050033] text-white">{t("common.continueBtn")}</button></Card>
+          <Card className="p-4"><div className="space-y-2 text-[14px]"><p className="flex justify-between"><span>{t("transfers.debitAccount")}</span><span>{accountsLoading ? "Chargement des comptes..." : selectedDebitAccount ? `${selectedDebitAccount.name} - ${selectedDebitAccount.last4}` : accountsError ? "Impossible de charger les comptes." : "Aucun compte disponible."}</span></p><p className="flex justify-between"><span>{t("transfers.beneficiary")}</span><span>{selectedBeneficiary.name}</span></p><p className="flex justify-between"><span>{t("common.amount")}</span><span>{totalFormatted}</span></p><p className="flex justify-between"><span>{t("common.date")}</span><span>{executionDate}</span></p></div><button type="button" onClick={openRecap} disabled={isAccountSelectionUnavailable} className="mt-4 h-11 w-full rounded-[10px] bg-[#050033] text-white disabled:cursor-not-allowed disabled:opacity-60">{t("common.continueBtn")}</button>{accountsError ? <p className="mt-2 text-[12px] text-[#DC2626]">Impossible de charger les comptes.</p> : null}{!accountsLoading && !accountsError && !selectedDebitAccount ? <p className="mt-2 text-[12px] text-[#6B7280]">Aucun compte disponible.</p> : null}</Card>
           <Card className="p-4"><h2 className="font-bold">{t("transfers.recent")}</h2>{recentTransfers.map((item) => <button key={item.id} type="button" onClick={() => setShowDetail(item)} className="flex w-full items-center justify-between py-2 text-left"><span>{item.beneficiary}</span><span>- {formatAmount(item.amount)}</span></button>)}</Card>
         </div>
       </MobileShell>
@@ -539,7 +630,7 @@ export default function MobileTransfers() {
           </div>
         </div>
       ) : null}
-      {showAccountPicker ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4"><div className="flex items-center justify-between"><h2 className="text-[18px] font-bold">{t("transfers.chooseAccount")}</h2><button type="button" onClick={() => setShowAccountPicker(false)}><X size={18} /></button></div><div className="mt-3 space-y-2">{debitAccounts.map((account) => { const isSelected = selectedDebitAccountId === account.id; return <button key={account.id} type="button" aria-pressed={isSelected} aria-label={`Selectionner ${account.name}`} onClick={() => { resetEmailForNewTransfer(); setSelectedDebitAccountId(account.id); setShowAccountPicker(false); }} className={`flex w-full items-center justify-between rounded-[12px] border px-3 py-3 text-left ${isSelected ? "border-[#9ACD00] bg-[#F7FBEA]" : "border-[#E5E7EB] bg-white"}`}><span><span className="block text-[14px] font-semibold">{account.name}</span><span className="block text-[12px] text-[#6B7280]">{account.balance} - {maskIban(account.iban)}</span></span>{isSelected ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>; })}</div></div></div> : null}
+      {showAccountPicker ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4"><div className="flex items-center justify-between"><h2 className="text-[18px] font-bold">{t("transfers.chooseAccount")}</h2><button type="button" onClick={() => setShowAccountPicker(false)}><X size={18} /></button></div><div className="mt-3 space-y-2">{accountsLoading ? <p className="text-[14px] text-[#6B7280]">Chargement des comptes...</p> : accountsError ? <p className="text-[14px] text-[#DC2626]">Impossible de charger les comptes.</p> : debitAccounts.length === 0 ? <p className="text-[14px] text-[#6B7280]">Aucun compte disponible.</p> : debitAccounts.map((account) => { const isSelected = selectedDebitAccountId === account.id; return <button key={account.id} type="button" aria-pressed={isSelected} aria-label={`Selectionner ${account.name}`} onClick={() => { resetEmailForNewTransfer(); setSelectedDebitAccountId(account.id); setShowAccountPicker(false); }} className={`flex w-full items-center justify-between rounded-[12px] border px-3 py-3 text-left ${isSelected ? "border-[#9ACD00] bg-[#F7FBEA]" : "border-[#E5E7EB] bg-white"}`}><span><span className="block text-[14px] font-semibold">{account.name}</span><span className="block text-[12px] text-[#6B7280]">{account.balance} - {maskIban(account.iban)}</span></span>{isSelected ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>; })}</div></div></div> : null}
       {showTypePicker ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4">{transferTypes.map((type) => <button key={type.id} type="button" aria-pressed={selectedTransferTypeId === type.id} onClick={() => selectTransferType(type.id)} className={`mb-2 flex w-full items-center justify-between rounded-[12px] border p-3 text-left ${selectedTransferTypeId === type.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB]"}`}><span>{type.label}</span>{selectedTransferTypeId === type.id ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>)}</div></div> : null}
       {showDetail ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4"><p>{t("transfers.beneficiary")} : {showDetail.beneficiary}</p><p>{t("common.reference")} : {showDetail.reference}</p><button type="button" onClick={() => setShowDetail(null)} className="mt-4 h-10 w-full rounded-[10px] bg-[#050033] text-white">{t("common.close")}</button></div></div> : null}
       <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />
