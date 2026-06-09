@@ -24,10 +24,25 @@ function parseAmount(value: string) { const p = Number.parseFloat(value.replace(
 function parseBalance(value: string) { return Number.parseFloat(value.replace(/\s/g, "").replace("EUR", "").replace(/\./g, "").replace(",", ".")); }
 function formatAmount(value: string) { return `${parseAmount(value).toFixed(2).replace(".", ",")} EUR`; }
 function maskIban(iban: string) { const c = iban.replace(/\s+/g, ""); return `${c.slice(0, 4)} ${c.slice(4, 8)} **** **** ${c.slice(-4)}`; }
-function generateTransferReference() { const n = new Date(); return `VIR-${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, "0")}${String(n.getDate()).padStart(2, "0")}-${String(n.getHours()).padStart(2, "0")}${String(n.getMinutes()).padStart(2, "0")}-${String(Math.floor(Math.random() * 9000) + 1000)}`; }
 function generateTemporaryReference() { const n = new Date(); return `VR-${String(n.getFullYear()).slice(-2)}${String(n.getMonth() + 1).padStart(2, "0")}${String(n.getDate()).padStart(2, "0")}-${String(Math.floor(Math.random() * 9000) + 1000)}`; }
 function todayInputValue() { return new Date().toISOString().slice(0, 10); }
 function formatExecutionDate(value: string) { if (!value) return "Aujourd'hui"; return new Date(`${value}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }); }
+function todayDateString() { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`; }
+function isUuid(value: string) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
+function getSubmitErrorMessage(errorCode?: string, fallbackMessage?: string) {
+  const codeMessages: Record<string, string> = {
+    INVALID_AMOUNT: "Montant invalide.",
+    MISSING_ACCOUNT: "Veuillez sélectionner un compte débiteur.",
+    MISSING_BENEFICIARY_NAME: "Veuillez sélectionner un bénéficiaire.",
+    MISSING_BENEFICIARY_IBAN: "L'IBAN du bénéficiaire est manquant.",
+    INSUFFICIENT_FUNDS: "Solde insuffisant pour effectuer ce virement.",
+    ACCOUNT_NOT_FOUND: "Compte débiteur introuvable.",
+    ACCOUNT_NOT_ACTIVE: "Ce compte n'est pas actif.",
+    INVALID_TRANSFER_TYPE: "Type de virement invalide.",
+  };
+
+  return codeMessages[errorCode ?? ""] || fallbackMessage || "Une erreur est survenue lors du virement. Veuillez réessayer.";
+}
 
 function Card({ children, className = "" }: { children: ReactNode; className?: string }) { return <div className={`rounded-[18px] border border-[#E5E7EB] bg-white shadow-[0_10px_26px_rgba(5,0,51,0.07)] ${className}`}>{children}</div>; }
 
@@ -63,6 +78,8 @@ export default function MobileTransfers() {
   const [finalReference, setFinalReference] = useState("");
   const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const debitAccounts = useMemo(() => [
     { id: "current", name: t("accounts.current"), balance: "84.320,00 EUR", iban: "LU88 0019 2450 1234 5678", last4: "5678" },
@@ -92,6 +109,7 @@ export default function MobileTransfers() {
   function selectTransferType(typeId: string) { resetEmailForNewTransfer(); setSelectedTransferTypeId(typeId); setIsRecurring(typeId === "recurring"); if (typeId === "scheduled" && !scheduledDate) setScheduledDate(todayInputValue()); setShowTypePicker(false); }
 
   function openRecap() {
+    setSubmitError(null);
     const parsedAmount = parseAmount(amount);
     if (!amount.trim() || parsedAmount <= 0) { setAmountError(t("transfers.errors.invalidAmount")); return; }
     if (parsedAmount > parseBalance(selectedDebitAccount.balance)) { setAmountError(t("transfers.errors.amountExceedsBalance")); return; }
@@ -122,7 +140,7 @@ export default function MobileTransfers() {
 
   function resetEmailNotice() { setEmailStatus("idle"); setEmailError(null); }
 
-  function resetEmailForNewTransfer() { resetEmailNotice(); setFinalReference(""); }
+  function resetEmailForNewTransfer() { resetEmailNotice(); setFinalReference(""); setSubmitError(null); }
 
   function sendBeneficiaryNotice(reference: string, validationDate: Date) {
     if (emailStatus === "sending" || emailStatus === "sent") return;
@@ -131,7 +149,89 @@ export default function MobileTransfers() {
     void sendBeneficiaryTransferEmail({ beneficiaryEmail: selectedBeneficiary.email, beneficiaryName: selectedBeneficiary.name, beneficiaryBank: selectedBeneficiary.bank, beneficiaryIban: selectedBeneficiary.iban, amount: totalFormatted, reference, executionDate, validationDate: validationDate.toLocaleDateString("fr-FR"), validationTime: validationDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), reason, ordererName: "Frederico Di Mario" }).then((result) => { setEmailStatus(result.status); setEmailError(result.error ?? null); });
   }
 
-  function validate() { const validationDate = new Date(); const reference = finalReference || generateTransferReference(); setValidatedAt(validationDate); setFinalReference(reference); setShowRecap(false); setShowSuccess(true); addTransferNotification({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference }); addTransferMessage({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference, accountName: selectedDebitAccount.name, executionDate, validationDate: validationDate.toLocaleDateString("fr-FR"), validationTime: validationDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) }); sendBeneficiaryNotice(reference, validationDate); }
+  function getTransferPayload() {
+    return {
+      accountCode: selectedDebitAccountId,
+      accountId: null,
+      beneficiaryId: isUuid(selectedBeneficiary.id) ? selectedBeneficiary.id : null,
+      beneficiaryName: selectedBeneficiary.name.trim(),
+      beneficiaryIban: selectedBeneficiary.iban.trim(),
+      beneficiaryBank: selectedBeneficiary.bank.trim(),
+      beneficiaryEmail: selectedBeneficiary.email.trim(),
+      amount: parseAmount(amount),
+      reason: reason.trim() || "Virement",
+      transferType: selectedTransferTypeId || "instant",
+      executionDate: selectedTransferTypeId === "scheduled" ? (scheduledDate || todayDateString()) : todayDateString(),
+      idempotencyKey: crypto.randomUUID(),
+    };
+  }
+
+  async function validateTransfer() {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const payload = getTransferPayload();
+
+      if (!payload.accountCode) {
+        setSubmitError(getSubmitErrorMessage("MISSING_ACCOUNT"));
+        return;
+      }
+
+      if (!payload.beneficiaryName) {
+        setSubmitError(getSubmitErrorMessage("MISSING_BENEFICIARY_NAME"));
+        return;
+      }
+
+      if (!payload.beneficiaryIban) {
+        setSubmitError(getSubmitErrorMessage("MISSING_BENEFICIARY_IBAN"));
+        return;
+      }
+
+      if (!Number.isFinite(payload.amount) || payload.amount <= 0) {
+        setSubmitError(getSubmitErrorMessage("INVALID_AMOUNT"));
+        return;
+      }
+
+      if (!payload.transferType) {
+        setSubmitError(getSubmitErrorMessage("INVALID_TRANSFER_TYPE"));
+        return;
+      }
+
+      if (payload.transferType === "scheduled" && (!payload.executionDate || payload.executionDate < todayDateString())) {
+        setSubmitError("Veuillez choisir une date d'exécution valide.");
+        return;
+      }
+
+      const response = await fetch("/api/transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json() as { success: boolean; transfer?: { reference?: string }; error?: string; message?: string };
+
+      if (!result.success || !result.transfer?.reference) {
+        setSubmitError(getSubmitErrorMessage(result.error, result.message));
+        return;
+      }
+
+      const supabaseReference = result.transfer.reference;
+      const validationDate = new Date();
+      setValidatedAt(validationDate);
+      setFinalReference(supabaseReference);
+      setShowRecap(false);
+      setShowSuccess(true);
+      addTransferNotification({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference: supabaseReference });
+      addTransferMessage({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference: supabaseReference, accountName: selectedDebitAccount.name, executionDate, validationDate: validationDate.toLocaleDateString("fr-FR"), validationTime: validationDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) });
+      sendBeneficiaryNotice(supabaseReference, validationDate);
+    } catch {
+      setSubmitError("Une erreur réseau est survenue. Veuillez réessayer.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   function downloadReceipt() {
     const receiptDate = validatedAt ?? new Date();
@@ -293,20 +393,23 @@ export default function MobileTransfers() {
 
               {/* CTA Buttons */}
               <div className="mt-4 grid grid-cols-2 gap-3 pb-2">
+                {submitError ? <div className="col-span-2 rounded-[12px] border border-[#DC2626] bg-[#FEF2F2] p-3 text-[13px] text-[#DC2626]">{submitError}</div> : null}
                 <button
                   type="button"
                   onClick={() => setShowRecap(false)}
-                  className="flex h-[50px] items-center justify-center rounded-[14px] border-2 border-[#050033]/20 text-[15px] font-semibold text-[#050033] transition-all active:scale-[0.97]"
+                  disabled={isSubmitting}
+                  className="flex h-[50px] items-center justify-center rounded-[14px] border-2 border-[#050033]/20 text-[15px] font-semibold text-[#050033] transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {t("common.back")}
                 </button>
                 <button
                   type="button"
-                  onClick={validate}
-                  className="flex h-[50px] items-center justify-center gap-2 rounded-[14px] bg-[#050033] text-[15px] font-bold text-white shadow-[0_4px_14px_rgba(5,0,51,0.25)] transition-all active:scale-[0.97]"
+                  onClick={validateTransfer}
+                  disabled={isSubmitting}
+                  className="flex h-[50px] items-center justify-center gap-2 rounded-[14px] bg-[#050033] text-[15px] font-bold text-white shadow-[0_4px_14px_rgba(5,0,51,0.25)] transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {t("common.validate")}
-                  <ArrowRight size={16} />
+                  {isSubmitting ? "Traitement en cours..." : t("common.validate")}
+                  {isSubmitting ? null : <ArrowRight size={16} />}
                 </button>
               </div>
             </div>
@@ -425,7 +528,7 @@ export default function MobileTransfers() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowSuccess(false); setShowRecap(false); setTemporaryReference(""); setFinalReference(""); setValidatedAt(null); resetEmailNotice(); }}
+                  onClick={() => { setShowSuccess(false); setShowRecap(false); setTemporaryReference(""); setFinalReference(""); setValidatedAt(null); resetEmailNotice(); setSubmitError(null); setIsSubmitting(false); }}
                   className="flex h-[50px] w-full items-center justify-center gap-2 rounded-[14px] bg-[#050033] text-[15px] font-bold text-white shadow-[0_4px_14px_rgba(5,0,51,0.25)] transition-all active:scale-[0.97]"
                 >
                   Faire un autre virement
