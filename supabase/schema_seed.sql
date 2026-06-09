@@ -155,9 +155,10 @@ insert into accounts (
   display_order
 )
 values
-  ('current', 'Compte courant', 'current', 'IT60 X054 2811 1010 0000 0000 001', 'EUR', 84320.00, 84320.00, 'active', 'Frederico Di Mario', 'fredericodimario8@gmail.com', 1),
-  ('savings', 'Compte épargne', 'savings', 'IT60 X054 2811 1010 0000 0000 002', 'EUR', 185680.00, 185680.00, 'active', 'Frederico Di Mario', 'fredericodimario8@gmail.com', 2),
-  ('joint', 'Compte joint', 'joint', 'IT60 X054 2811 1010 0000 0000 003', 'EUR', 30000.00, 30000.00, 'active', 'Frederico Di Mario', 'fredericodimario8@gmail.com', 3)
+  -- Re-run this seed to update demo IBANs in an existing Supabase database.
+  ('current', 'Compte courant', 'current', 'LU12 0019 1234 5678 9101', 'EUR', 84320.00, 84320.00, 'active', 'Frederico Di Mario', 'fredericodimario8@gmail.com', 1),
+  ('savings', 'Compte épargne', 'savings', 'LU44 0019 9876 5432 1001', 'EUR', 185680.00, 185680.00, 'active', 'Frederico Di Mario', 'fredericodimario8@gmail.com', 2),
+  ('joint', 'Compte joint', 'joint', 'LU76 0019 4567 8901 2301', 'EUR', 30000.00, 30000.00, 'active', 'Frederico Di Mario', 'fredericodimario8@gmail.com', 3)
 on conflict (code) do update set
   -- Important: balances are not updated on seed re-runs to avoid overwriting real transfer state.
   name = excluded.name,
@@ -182,9 +183,9 @@ insert into beneficiaries (
   active
 )
 values
-  ('luca-romano', 'Luca Romano', 'individual', 'IT60 X054 2811 1010 0000 0123 456', 'Istituto Bancario Italiano', 'luca.romano@example.com', '+39 06 1234 5678', 'LR', true, true),
-  ('sofia-bianchi', 'Sofia Bianchi', 'individual', 'IT29 P030 6909 6061 0000 0123 789', 'Banco di Roma', 'sofia.bianchi@example.com', '+39 06 2345 6789', 'SB', true, true),
-  ('marco-conti', 'Marco Conti', 'individual', 'IT60 X054 2811 1010 0000 0456 123', 'Banca Nazionale Italiana', 'marco.conti@example.com', '+39 06 3456 7890', 'MC', false, true)
+  ('luca-romano', 'Luca Romano', 'individual', 'LU28 0019 1111 2222 3333', 'Banque Raiffeisen Luxembourg', 'luca.romano@example.com', '+39 06 1234 5678', 'LR', true, true),
+  ('sofia-bianchi', 'Sofia Bianchi', 'individual', 'LU55 0019 4444 5555 6666', 'Banque de Luxembourg', 'sofia.bianchi@example.com', '+39 06 2345 6789', 'SB', true, true),
+  ('marco-conti', 'Marco Conti', 'individual', 'LU82 0019 7777 8888 9999', 'Banque Internationale à Luxembourg', 'marco.conti@example.com', '+39 06 3456 7890', 'MC', false, true)
 on conflict (code) do update set
   name = excluded.name,
   type = excluded.type,
@@ -241,19 +242,19 @@ insert into transactions (
 select
   current_account.id,
   historical_transactions.reference,
-  'Virement reçu — Compte italien',
-  'Istituto Bancario Italiano',
-  'Virement',
-  historical_transactions.amount,
-  'EUR',
-  'credit',
-  'executed',
-  historical_transactions.transaction_date,
-  historical_transactions.transaction_time,
-  'IT60 X054 2811 1010 0000 0123 456',
-  'Istituto Bancario Italiano',
-  'IT60 X054 2811 1010 0000 0123 456',
-  'Virement entrant semestriel depuis un compte italien',
+  'Virement reçu — Compte luxembourgeois',
+    'Banque Raiffeisen Luxembourg',
+    'Virement',
+    historical_transactions.amount,
+    'EUR',
+    'credit',
+    'executed',
+    historical_transactions.transaction_date,
+    historical_transactions.transaction_time,
+    'LU12 0019 1234 5678 9101',
+    'Banque Raiffeisen Luxembourg',
+    'LU28 0019 1111 2222 3333',
+    'Virement entrant semestriel depuis un compte luxembourgeois',
   jsonb_build_object('seed', true, 'source', 'italian_history')
 from historical_transactions
 cross join current_account

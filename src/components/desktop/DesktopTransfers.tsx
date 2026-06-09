@@ -63,9 +63,9 @@ type TransferItem = {
 };
 
 const initialBeneficiaries: Beneficiary[] = [
-  { id: "luca", name: "Luca Romano", type: "Particulier", iban: "IT60 X054 2811 1010 0000 0123 456", bank: "Istituto Bancario Italiano", email: "luca.romano@example.com", phone: "+39 345 812 4470", initials: "LR" },
-  { id: "sofia", name: "Sofia Bianchi", type: "Particulier", iban: "IT29 P030 6909 6061 0000 0123 789", bank: "Banco di Roma", email: "sofia.bianchi@example.com", phone: "+39 333 604 2198", initials: "SB" },
-  { id: "marco", name: "Marco Conti", type: "Particulier", iban: "IT12 A020 0814 2500 0103 4567 890", bank: "Banca Nazionale Italiana", email: "marco.conti@example.com", phone: "+39 347 920 1186", initials: "MC" },
+  { id: "luca", name: "Luca Romano", type: "Particulier", iban: "LU28 0019 1111 2222 3333", bank: "Banque Raiffeisen Luxembourg", email: "luca.romano@example.com", phone: "+39 345 812 4470", initials: "LR" },
+  { id: "sofia", name: "Sofia Bianchi", type: "Particulier", iban: "LU55 0019 4444 5555 6666", bank: "Banque de Luxembourg", email: "sofia.bianchi@example.com", phone: "+39 333 604 2198", initials: "SB" },
+  { id: "marco", name: "Marco Conti", type: "Particulier", iban: "LU82 0019 7777 8888 9999", bank: "Banque Internationale à Luxembourg", email: "marco.conti@example.com", phone: "+39 347 920 1186", initials: "MC" },
 ];
 
 const recentTransfers: TransferItem[] = [
