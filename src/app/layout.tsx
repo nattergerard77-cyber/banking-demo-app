@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
 import { LanguageProvider } from '@/context/LanguageContext';
 import { NotificationProvider } from '@/context/NotificationContext';
@@ -21,7 +22,9 @@ export default function RootLayout({
   return (
     <html lang="fr" suppressHydrationWarning>
       <head>
-        <script
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html:
               '(() => { try { const theme = localStorage.getItem("theme"); document.documentElement.classList.toggle("dark", theme === "dark"); } catch (_) {} })();',
