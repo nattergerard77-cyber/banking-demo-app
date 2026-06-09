@@ -28,6 +28,7 @@ import ClientOnlyChart from "../shared/ClientOnlyChart";
 import DemoModal from "../shared/DemoModal";
 import DemoToast from "../shared/DemoToast";
 
+import { useLastLogin } from "@/hooks/useLastLogin";
 import DesktopShell from "./DesktopShell";
 
 const chartData = [
@@ -79,6 +80,7 @@ function Card({
 export function DesktopDashboard() {
   const router = useRouter();
   const { t } = useLanguage();
+  const lastLogin = useLastLogin();
   const [range, setRange] = useState("30J");
   const [notificationsRead, setNotificationsRead] = useState(false);
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
@@ -151,7 +153,7 @@ export function DesktopDashboard() {
           </div>
 
           <p className="pt-1 text-[13px] text-[#6B7280]">
-            {t("dashboard.lastLogin")}
+            {t("dashboard.lastLogin")} : {lastLogin || "Chargement..."}
           </p>
         </div>
 

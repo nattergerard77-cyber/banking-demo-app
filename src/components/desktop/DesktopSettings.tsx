@@ -283,7 +283,7 @@ export function DesktopSettings() {
                     Frederico Di Mario
                   </h2>
                   <p className="mt-1 text-[13px] text-[#6B7280]">
-                    Cliente Raiffeisen depuis 2021
+                    Client Raiffeisen depuis 2015
                   </p>
                   <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-semibold text-[#050033]">
                     <ShieldCheck size={14} className="text-[#7AA600]" />
@@ -319,7 +319,7 @@ export function DesktopSettings() {
                   Téléphone
                 </p>
                 <p className="mt-2 text-[14px] font-bold text-[#090927]">
-                  +352 621 000 245
+                  +33 7 74 36 43 82
                 </p>
               </div>
 

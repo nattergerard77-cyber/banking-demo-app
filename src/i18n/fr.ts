@@ -448,7 +448,7 @@ const fr = {
   topbar: {
     searchPlaceholder: "Rechercher une opération, un bénéficiaire...",
     profile: "Profil",
-    clientSince: "Client depuis 2021",
+    clientSince: "Client depuis 2015",
     profileMenu: "Menu profil"
   },
   sidebar: {
@@ -471,7 +471,7 @@ const fr = {
   dashboard: {
     title: "Bonjour Frederico,",
     subtitle: "Voici un aperçu de vos comptes et de votre activité.",
-    lastLogin: "Dernière connexion : aujourd’hui à 09:15",
+    lastLogin: "Dernière connexion",
     totalBalance: "Solde total de vos comptes",
     encours: "Encours à date",
     currentAccount: "Compte courant",
@@ -529,7 +529,7 @@ const fr = {
     },
     topbar: {
       searchPlaceholder: "Rechercher une opération, un bénéficiaire...",
-      clientSince: "Client depuis 2021",
+      clientSince: "Client depuis 2015",
       profile: "Profil"
     },
 

@@ -31,7 +31,7 @@ export default function DesktopTopbar() {
       icon: User,
       title: t("profile.myProfile") || "Mon profil",
       subtitle: t("profile.myProfileSubtitle") || "Informations personnelles et coordonnées",
-      action: () => navigateTo('/parametres')
+      action: () => navigateTo('/profil')
     },
     {
       id: "security",
@@ -152,7 +152,7 @@ export default function DesktopTopbar() {
           >
             <div className="text-right">
               <div className="text-sm font-bold text-navy">Frederico Di Mario</div>
-              <div className="text-xs text-text-secondary">{t("topbar.clientSince") || "Client depuis 2021"}</div>
+              <div className="text-xs text-text-secondary">{t("topbar.clientSince") || "Client depuis 2015"}</div>
             </div>
             <div className="h-10 w-10 rounded-full bg-navy text-white flex items-center justify-center font-bold">
               FM
@@ -180,7 +180,7 @@ export default function DesktopTopbar() {
                       fredericodimario8@gmail.com
                     </p>
                     <p className="mt-0.5 text-[12px] text-[#8A94A6]">
-                      {t("topbar.clientSince") || "Client depuis 2021"}
+                      {t("topbar.clientSince") || "Client depuis 2015"}
                     </p>
                   </div>
                 </div>

@@ -30,7 +30,7 @@ export default function MobileHeader() {
       icon: User,
       title: t("profile.myProfile") || "Mon profil",
       subtitle: t("profile.myProfileSubtitle") || "Informations personnelles et coordonnées",
-      action: () => navigateTo('/parametres')
+      action: () => navigateTo('/profil')
     },
     {
       id: "security",
@@ -135,7 +135,7 @@ export default function MobileHeader() {
                 fredericodimario8@gmail.com
               </p>
               <p className="mt-1 text-[14px] text-[#8A94A6]">
-                {t("topbar.clientSince") || "Client depuis 2021"}
+                {t("topbar.clientSince") || "Client depuis 2015"}
               </p>
             </div>
           </div>

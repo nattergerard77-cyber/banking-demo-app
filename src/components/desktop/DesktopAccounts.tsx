@@ -31,6 +31,7 @@ import ClientOnlyChart from "../shared/ClientOnlyChart";
 import DemoModal from "../shared/DemoModal";
 import DemoToast from "../shared/DemoToast";
 import type { SupabaseAccount, SupabaseTransaction } from "@/types/supabase";
+import { useLastLogin } from "@/hooks/useLastLogin";
 
 import DesktopShell from "./DesktopShell";
 
@@ -230,6 +231,7 @@ function StatItem({
 }
 
 export function DesktopAccounts() {
+  const lastLogin = useLastLogin();
   const [accounts, setAccounts] = useState<AccountViewModel[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [accountsError, setAccountsError] = useState("");
@@ -325,7 +327,7 @@ export function DesktopAccounts() {
           </div>
 
           <p className="text-[13px] text-[#6B7280]">
-            Dernière connexion : aujourd&apos;hui à 09:15
+            Dernière connexion : {lastLogin || "Chargement..."}
           </p>
         </div>
 

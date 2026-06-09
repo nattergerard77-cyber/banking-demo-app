@@ -135,7 +135,7 @@ export function MobileSettings() {
                 Frederico Di Mario
               </h2>
               <p className="mt-1 text-[13px] text-[#6B7280]">
-                Cliente Raiffeisen depuis 2021
+                Client Raiffeisen depuis 2015
               </p>
 
               <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#EEF7D8] px-3 py-1 text-[12px] font-semibold text-[#050033]">
@@ -154,7 +154,7 @@ export function MobileSettings() {
           <div className="mt-3 divide-y divide-[#E5E7EB]">
             {[
               { icon: Mail, label: "Email", value: "fredericodimario8@gmail.com" },
-              { icon: Phone, label: "Téléphone", value: "+352 621 000 245" },
+              { icon: Phone, label: "Téléphone", value: "+33 7 74 36 43 82" },
               { icon: Globe2, label: "Pays", value: "Luxembourg" },
               { icon: CreditCard, label: "Statut", value: "Premium" },
             ].map((item) => {

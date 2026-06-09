@@ -448,7 +448,7 @@ const en = {
   topbar: {
     searchPlaceholder: "Search for a transaction, a beneficiary...",
     profile: "Profile",
-    clientSince: "Client since 2021",
+    clientSince: "Client since 2015",
     profileMenu: "Profile menu"
   },
   sidebar: {
@@ -471,7 +471,7 @@ const en = {
   dashboard: {
     title: "Good morning Frederico,",
     subtitle: "Here is an overview of your accounts and activity.",
-    lastLogin: "Last login: today at 09:15",
+    lastLogin: "Last login",
     totalBalance: "Total balance of your accounts",
     encours: "Outstanding balance",
     currentAccount: "Current account",
@@ -529,7 +529,7 @@ const en = {
     },
     topbar: {
       searchPlaceholder: "Search for a transaction, a beneficiary...",
-      clientSince: "Client since 2021",
+      clientSince: "Client since 2015",
       profile: "Profile"
     },
 

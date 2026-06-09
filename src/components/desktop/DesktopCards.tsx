@@ -22,6 +22,7 @@ import DesktopShell from "./DesktopShell";
 import DemoModal from "../shared/DemoModal";
 import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
+import { useLastLogin } from "@/hooks/useLastLogin";
 
 const cardTransactions = [
   {
@@ -242,6 +243,7 @@ function SettingToggle({
 }
 
 export function DesktopCards() {
+  const lastLogin = useLastLogin();
   const [toast, setToast] = useState("");
   const [paymentOptions, setPaymentOptions] = useState({
     sansContact: true,
@@ -265,7 +267,7 @@ export function DesktopCards() {
           </div>
 
           <p className="text-[13px] text-[#6B7280]">
-            Dernière connexion : aujourd&apos;hui à 09:15
+            Dernière connexion : {lastLogin || "Chargement..."}
           </p>
         </div>
 
