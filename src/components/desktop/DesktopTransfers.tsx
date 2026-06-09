@@ -73,17 +73,6 @@ function formatRelativeTransferDate(offsetDays: number) {
   });
 }
 
-function generateTransferReference() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  const h = String(now.getHours()).padStart(2, "0");
-  const min = String(now.getMinutes()).padStart(2, "0");
-  const suffix = String(Math.floor(Math.random() * 9000) + 1000);
-  return `VIR-${y}${m}${d}-${h}${min}-${suffix}`;
-}
-
 function generateTemporaryReference() {
   const now = new Date();
   const y = String(now.getFullYear()).slice(-2);
@@ -115,10 +104,37 @@ function formatAmount(value: string) {
   return `${parseAmount(value).toFixed(2).replace(".", ",")} EUR`;
 }
 
+function todayDateString(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function maskIban(iban: string) {
   const clean = iban.replace(/\s+/g, "");
   if (clean.length < 10) return iban;
   return `${clean.slice(0, 4)} ${clean.slice(4, 8)} **** **** ${clean.slice(-4)}`;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function getSubmitErrorMessage(errorCode?: string, fallbackMessage?: string) {
+  const codeMessages: Record<string, string> = {
+    INVALID_AMOUNT: "Montant invalide.",
+    MISSING_ACCOUNT: "Veuillez sélectionner un compte débiteur.",
+    MISSING_BENEFICIARY_NAME: "Veuillez sélectionner un bénéficiaire.",
+    MISSING_BENEFICIARY_IBAN: "L'IBAN du bénéficiaire est manquant.",
+    INSUFFICIENT_FUNDS: "Solde insuffisant pour effectuer ce virement.",
+    ACCOUNT_NOT_FOUND: "Compte débiteur introuvable.",
+    ACCOUNT_NOT_ACTIVE: "Ce compte n'est pas actif.",
+    INVALID_TRANSFER_TYPE: "Type de virement invalide.",
+  };
+
+  return codeMessages[errorCode ?? ""] || fallbackMessage || "Une erreur est survenue lors du virement. Veuillez réessayer.";
 }
 
 function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -159,6 +175,8 @@ export default function DesktopTransfers() {
   const [finalReference, setFinalReference] = useState("");
   const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const selectedBeneficiary = useMemo(() => beneficiaries.find((item) => item.id === selectedBeneficiaryId) ?? beneficiaries[0], [beneficiaries, selectedBeneficiaryId]);
   const selectedDebitAccount = useMemo(() => debitAccounts.find((account) => account.id === selectedDebitAccountId) ?? debitAccounts[0], [selectedDebitAccountId]);
@@ -176,6 +194,7 @@ export default function DesktopTransfers() {
   }
 
   function openRecap() {
+    setSubmitError(null);
     const parsedAmount = parseAmount(amount);
     if (!amount.trim() || parsedAmount <= 0) {
       setAmountError("Veuillez saisir un montant valide.");
@@ -225,6 +244,7 @@ export default function DesktopTransfers() {
   function resetEmailForNewTransfer() {
     resetEmailNotice();
     setFinalReference("");
+    setSubmitError(null);
   }
 
   function sendBeneficiaryNotice(reference: string, validationDate: Date) {
@@ -257,24 +277,96 @@ export default function DesktopTransfers() {
     });
   }
 
-  function validateTransfer() {
-    const now = new Date();
-    const reference = finalReference || generateTransferReference();
-    setValidatedAt(now);
-    setFinalReference(reference);
-    setShowRecap(false);
-    setShowSuccess(true);
-    addTransferNotification({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference });
-    addTransferMessage({
-      beneficiary: selectedBeneficiary.name,
-      amount: totalFormatted,
-      reference,
-      accountName: selectedDebitAccount.name,
-      executionDate,
-      validationDate: now.toLocaleDateString("fr-FR"),
-      validationTime: now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-    });
-    sendBeneficiaryNotice(reference, now);
+  function getTransferPayload() {
+    return {
+      accountCode: selectedDebitAccountId,
+      accountId: null,
+      beneficiaryId: isUuid(selectedBeneficiary.id) ? selectedBeneficiary.id : null,
+      beneficiaryName: selectedBeneficiary.name.trim(),
+      beneficiaryIban: selectedBeneficiary.iban.trim(),
+      beneficiaryBank: selectedBeneficiary.bank.trim(),
+      beneficiaryEmail: selectedBeneficiary.email.trim(),
+      amount: parseAmount(amount),
+      reason: reason.trim() || "Virement",
+      transferType: selectedTransferTypeId || "instant",
+      executionDate: selectedTransferTypeId === "scheduled" ? (scheduledDate || todayDateString()) : todayDateString(),
+      idempotencyKey: crypto.randomUUID(),
+    };
+  }
+
+  async function validateTransfer() {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const payload = getTransferPayload();
+
+      if (!payload.accountCode) {
+        setSubmitError(getSubmitErrorMessage("MISSING_ACCOUNT"));
+        return;
+      }
+
+      if (!payload.beneficiaryName) {
+        setSubmitError(getSubmitErrorMessage("MISSING_BENEFICIARY_NAME"));
+        return;
+      }
+
+      if (!payload.beneficiaryIban) {
+        setSubmitError(getSubmitErrorMessage("MISSING_BENEFICIARY_IBAN"));
+        return;
+      }
+
+      if (!Number.isFinite(payload.amount) || payload.amount <= 0) {
+        setSubmitError(getSubmitErrorMessage("INVALID_AMOUNT"));
+        return;
+      }
+
+      if (!payload.transferType) {
+        setSubmitError(getSubmitErrorMessage("INVALID_TRANSFER_TYPE"));
+        return;
+      }
+
+      if (payload.transferType === "scheduled" && (!payload.executionDate || payload.executionDate < todayDateString())) {
+        setSubmitError("Veuillez choisir une date d'exécution valide.");
+        return;
+      }
+
+      const response = await fetch("/api/transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json() as { success: boolean; transfer?: { reference?: string }; error?: string; message?: string };
+
+      if (!result.success || !result.transfer?.reference) {
+        setSubmitError(getSubmitErrorMessage(result.error, result.message));
+        return;
+      }
+
+      const supabaseReference = result.transfer.reference;
+      const now = new Date();
+      setValidatedAt(now);
+      setFinalReference(supabaseReference);
+      setShowRecap(false);
+      setShowSuccess(true);
+      addTransferNotification({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference: supabaseReference });
+      addTransferMessage({
+        beneficiary: selectedBeneficiary.name,
+        amount: totalFormatted,
+        reference: supabaseReference,
+        accountName: selectedDebitAccount.name,
+        executionDate,
+        validationDate: now.toLocaleDateString("fr-FR"),
+        validationTime: now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      });
+      sendBeneficiaryNotice(supabaseReference, now);
+    } catch {
+      setSubmitError("Une erreur réseau est survenue. Veuillez réessayer.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function downloadReceipt() {
@@ -485,7 +577,8 @@ export default function DesktopTransfers() {
                 </div>
               </div>
             </div>
-            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setShowRecap(false)} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Retour</button><button type="button" onClick={validateTransfer} className="h-10 rounded-[10px] bg-[#050033] px-4 text-[14px] font-semibold text-white">Valider</button></div>
+             {submitError ? <div className="mt-4 rounded-[10px] border border-[#DC2626] bg-[#FEF2F2] p-3 text-[13px] text-[#DC2626]">{submitError}</div> : null}
+            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setShowRecap(false)} disabled={isSubmitting} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033] disabled:cursor-not-allowed disabled:opacity-50">Retour</button><button type="button" onClick={validateTransfer} disabled={isSubmitting} className="h-10 rounded-[10px] bg-[#050033] px-4 text-[14px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting ? "Traitement en cours..." : "Valider"}</button></div>
           </div>
         </div>
       ) : null}
@@ -496,7 +589,7 @@ export default function DesktopTransfers() {
             <div className="text-center"><span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#9ACD00] text-white"><CheckCircle2 size={34} /></span><h2 className="mt-3 text-[24px] font-bold text-[#090927]">Virement effectue avec succes</h2><p className="mt-1 text-[14px] text-[#6B7280]">Virement effectue avec succes.</p><p className="text-[13px] text-[#6B7280]">Recu prepare pour consultation.</p></div>
             <div className="mt-5 grid grid-cols-2 gap-3 text-[14px]"><p><span className="text-[#6B7280]">Reference</span><br /><span className="font-semibold text-[#090927]">{finalReference}</span></p><p><span className="text-[#6B7280]">Date</span><br /><span className="font-semibold text-[#090927]">{(validatedAt ?? new Date()).toLocaleDateString("fr-FR")}</span></p><p><span className="text-[#6B7280]">Heure</span><br /><span className="font-semibold text-[#090927]">{(validatedAt ?? new Date()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span></p><p><span className="text-[#6B7280]">Date d&apos;execution</span><br /><span className="font-semibold text-[#090927]">{executionDate}</span></p><p><span className="text-[#6B7280]">Compte debite</span><br /><span className="font-semibold text-[#090927]">{selectedDebitAccount.name}</span></p><p><span className="text-[#6B7280]">IBAN compte debite</span><br /><span className="font-semibold text-[#090927]">{maskIban(selectedDebitAccount.iban)}</span></p><p><span className="text-[#6B7280]">Type de virement</span><br /><span className="font-semibold text-[#090927]">{selectedTransferType.label}</span></p><p><span className="text-[#6B7280]">Beneficiaire</span><br /><span className="font-semibold text-[#090927]">{selectedBeneficiary.name}</span></p><p><span className="text-[#6B7280]">Banque</span><br /><span className="font-semibold text-[#090927]">{selectedBeneficiary.bank}</span></p><p><span className="text-[#6B7280]">IBAN beneficiaire</span><br /><span className="font-semibold text-[#090927]">{maskIban(selectedBeneficiary.iban)}</span></p><p><span className="text-[#6B7280]">Montant</span><br /><span className="font-semibold text-[#090927]">{totalFormatted}</span></p><p><span className="text-[#6B7280]">Frais</span><br /><span className="font-semibold text-[#7AA600]">0,00 EUR</span></p><p><span className="text-[#6B7280]">Total debite</span><br /><span className="text-[18px] font-bold text-[#050033]">{totalFormatted}</span></p></div>
             {emailStatus !== "idle" ? <div className="mt-4 rounded-[12px] border border-[#E5E7EB] bg-[#F8F9FB] p-3 text-[13px] text-[#6B7280]"><p className="font-semibold text-[#090927]">{emailStatus === "sending" ? t("transfers.emailNotice.sending") : emailStatus === "sent" ? t("transfers.emailNotice.sent") : t("transfers.emailNotice.failed")}</p>{emailStatus === "sent" ? <p className="mt-1">{t("transfers.emailNotice.sentTo")} : {selectedBeneficiary.email}</p> : null}{emailError ? <p className="mt-1 text-[12px] text-[#DC2626]">{emailError}</p> : null}</div> : null}
-            <div className="mt-6 flex flex-wrap justify-end gap-2"><button type="button" onClick={downloadReceipt} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Telecharger le recu</button><button type="button" onClick={() => { setShowSuccess(false); setAmount(""); setReason(""); setTemporaryReference(""); setFinalReference(""); setValidatedAt(null); resetEmailNotice(); }} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Faire un autre virement</button><button type="button" onClick={() => { setShowSuccess(false); setValidatedAt(null); resetEmailForNewTransfer(); }} className="h-10 rounded-[10px] bg-[#050033] px-4 text-[14px] font-semibold text-white">Fermer</button></div>
+            <div className="mt-6 flex flex-wrap justify-end gap-2"><button type="button" onClick={downloadReceipt} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Telecharger le recu</button><button type="button" onClick={() => { setShowSuccess(false); setAmount(""); setReason(""); setTemporaryReference(""); setFinalReference(""); setValidatedAt(null); resetEmailNotice(); setSubmitError(null); setIsSubmitting(false); }} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Faire un autre virement</button><button type="button" onClick={() => { setShowSuccess(false); setValidatedAt(null); resetEmailForNewTransfer(); }} className="h-10 rounded-[10px] bg-[#050033] px-4 text-[14px] font-semibold text-white">Fermer</button></div>
           </div>
         </div>
       ) : null}
