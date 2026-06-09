@@ -19,6 +19,9 @@ import MobileShell from "./MobileShell";
 import DemoModal from "../shared/DemoModal";
 import DemoToast from "../shared/DemoToast";
 import type { SupabaseAccount, SupabaseTransaction } from "@/types/supabase";
+import { mockUser } from "@/data/user";
+import { operationsHistoryData } from "@/data/operations-history";
+import { generateAccountStatementPdf } from "@/utils/generateAccountStatementPdf";
 
 type AccountsApiResponse =
   | { success: true; accounts: SupabaseAccount[] }
@@ -424,24 +427,45 @@ export function MobileAccounts() {
           </h2>
 
           <div className="mt-2 divide-y divide-[#E5E7EB]">
-            {[t("common.monthMay"), t("common.monthApril"), t("common.monthMarch")].map((month) => (
-                <button
-                  key={month}
-                  type="button"
-                  onClick={() => setToast('Document préparé pour consultation.')}
-                  className="flex w-full items-center justify-between py-2.5 text-left"
-                >
-                <span className="flex items-center gap-2.5 text-[13px] font-semibold text-[#090927]">
-                  <FileText size={16} className="text-[#050033]" />
-                  {month}
-                </span>
+            <button
+              type="button"
+              onClick={() => {
+                const currentAccount = accounts.find((item) => item.id === "current") ?? null;
+                generateAccountStatementPdf({
+                  year: 2015,
+                  clientName: mockUser.name,
+                  clientEmail: mockUser.email,
+                  clientPhone: mockUser.phone,
+                  clientSince: mockUser.clientSince,
+                  accountName: "Compte courant",
+                  accountIban: currentAccount?.iban ?? "LU12 0019 1234 5678 9101",
+                  accountCurrency: "EUR",
+                  transactions: operationsHistoryData
+                    .filter((op) => op.date.includes("2015"))
+                    .map((op) => ({
+                      date: op.date,
+                      label: op.label,
+                      category: op.category,
+                      amount: op.amount,
+                      positive: op.positive,
+                      status: op.status,
+                      senderIban: op.senderIban,
+                    })),
+                });
+                setToast("Relevé 2015 téléchargé avec succès.");
+              }}
+              className="flex w-full items-center justify-between py-2.5 text-left"
+            >
+              <span className="flex items-center gap-2.5 text-[13px] font-semibold text-[#090927]">
+                <FileText size={16} className="text-[#050033]" />
+                Relevé annuel 2015 — Compte courant
+              </span>
 
-                <span className="flex items-center gap-1.5 text-[12px] text-[#6B7280]">
-                  <Download size={15} />
-                  {t("common.pdf")}
-                </span>
-              </button>
-            ))}
+              <span className="flex items-center gap-1.5 text-[12px] text-[#6B7280]">
+                <Download size={15} />
+                {t("common.pdf")}
+              </span>
+            </button>
           </div>
 
           <button
