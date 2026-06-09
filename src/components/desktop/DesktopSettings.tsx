@@ -19,7 +19,6 @@ import {
   Moon,
   Phone,
   ShieldCheck,
-  Smartphone,
   User,
 } from "lucide-react";
 
@@ -28,6 +27,7 @@ import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
 import DesktopShell from "./DesktopShell";
 import { useLanguage } from "@/context/LanguageContext";
+import { useCurrentDevice } from "@/hooks/useCurrentDevice";
 
 const settingsSections = [
   {
@@ -76,21 +76,6 @@ const securityItems = [
     description: "Masquer les montants sensibles dans l’interface",
     active: false,
     icon: LockKeyhole,
-  },
-];
-
-const devices = [
-  {
-    name: "Chrome sur Windows",
-    location: "Luxembourg",
-    status: "Actif maintenant",
-    icon: MonitorSmartphone,
-  },
-  {
-    name: "iPhone de Frederico",
-    location: "Application mobile",
-    status: "Dernière activité : hier",
-    icon: Smartphone,
   },
 ];
 
@@ -213,6 +198,7 @@ export function DesktopSettings() {
     };
   }, []);
 
+  const currentDevice = useCurrentDevice();
   const isEn = selectedLanguage === "en";
 
   function onLanguageChange(lang: "fr" | "en") {
@@ -492,40 +478,37 @@ export function DesktopSettings() {
             </h2>
 
             <div className="mt-4 space-y-3">
-              {devices.map((device) => {
-                const Icon = device.icon;
+              {currentDevice ? (
+                <div className="flex items-center justify-between rounded-[14px] border border-[#E5E7EB] p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#EEF7D8] text-[#7AA600]">
+                      <MonitorSmartphone size={18} />
+                    </span>
 
-                return (
-                  <div
-                    key={device.name}
-                    className="flex items-center justify-between rounded-[14px] border border-[#E5E7EB] p-4 interactive-row"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F3F4F6] text-[#050033]">
-                        <Icon size={18} />
-                      </span>
-
-                      <div>
-                        <p className="text-[14px] font-bold text-[#090927]">
-                          {device.name}
-                        </p>
-                        <p className="mt-1 text-[12px] text-[#6B7280]">
-                          {device.location} · {device.status}
-                        </p>
-                      </div>
+                    <div>
+                      <p className="text-[14px] font-bold text-[#090927]">
+                        {currentDevice.browser} sur {currentDevice.os}
+                      </p>
+                      <p className="mt-1 text-[12px] text-[#6B7280]">
+                        {currentDevice.resolution} ·{isEn ? " Active now" : " Actif maintenant"}
+                      </p>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setModal("device")}
-                      className="flex items-center gap-1 text-[13px] font-semibold text-[#050033] interactive-link"
-                    >
-                      Gérer
-                      <ChevronRight size={13} className="arrow-icon" />
-                    </button>
                   </div>
-                );
-              })}
+
+                  <button
+                    type="button"
+                    onClick={() => setModal("device")}
+                    className="flex items-center gap-1 text-[13px] font-semibold text-[#050033] interactive-link"
+                  >
+                    {isEn ? "Manage" : "Gerer"}
+                    <ChevronRight size={13} className="arrow-icon" />
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-[14px] border border-[#E5E7EB] p-4 text-center text-[13px] text-[#6B7280]">
+                  {isEn ? "Detecting device..." : "Detection de l'appareil..."}
+                </div>
+              )}
             </div>
           </Card>
 

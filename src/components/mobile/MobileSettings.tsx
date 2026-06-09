@@ -18,7 +18,6 @@ import {
   Moon,
   Phone,
   ShieldCheck,
-  Smartphone,
 } from "lucide-react";
 
 import DemoModal from "../shared/DemoModal";
@@ -26,6 +25,7 @@ import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
 import MobileShell from "./MobileShell";
 import { useLanguage } from "@/context/LanguageContext";
+import { useCurrentDevice } from "@/hooks/useCurrentDevice";
 
 const securityItems = [
   { title: "Authentification renforcée", active: true, icon: ShieldCheck },
@@ -81,6 +81,7 @@ export function MobileSettings() {
     };
   }, []);
 
+  const currentDevice = useCurrentDevice();
   const isEn = selectedLanguage === "en";
   const securityTitleMap: Record<string, string> = {
     "Authentification renforcée": "Enhanced authentication",
@@ -292,42 +293,38 @@ export function MobileSettings() {
           </h2>
 
           <div className="mt-3 space-y-3">
-            {[
-              { icon: MonitorSmartphone, name: "Chrome sur Windows", info: "Luxembourg · actif maintenant" },
-              { icon: Smartphone, name: "iPhone de Frederico", info: "Dernière activité : hier" },
-            ].map((device) => {
-              const Icon = device.icon;
-
-              return (
-                <div
-                  key={device.name}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setModal("device")}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") setModal("device");
-                  }}
-                  className="flex items-center justify-between rounded-[14px] border border-[#E5E7EB] p-3"
-                >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F3F4F6] text-[#050033]">
-                      <Icon size={17} />
-                    </span>
-
-                    <span className="min-w-0">
-                      <span className="block truncate text-[14px] font-bold text-[#090927]">
-                        {device.name}
-                      </span>
-                      <span className="mt-1 block truncate text-[12px] text-[#6B7280]">
-                        {device.info}
-                      </span>
-                    </span>
+            {currentDevice ? (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setModal("device")}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") setModal("device");
+                }}
+                className="flex items-center justify-between rounded-[14px] border border-[#E5E7EB] p-3"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF7D8] text-[#7AA600]">
+                    <MonitorSmartphone size={17} />
                   </span>
 
-                  <ChevronRight size={17} className="text-[#050033]" />
-                </div>
-              );
-            })}
+                  <span className="min-w-0">
+                    <span className="block truncate text-[14px] font-bold text-[#090927]">
+                      {currentDevice.browser} sur {currentDevice.os}
+                    </span>
+                    <span className="mt-1 block truncate text-[12px] text-[#6B7280]">
+                      {currentDevice.resolution} ·{isEn ? " Active now" : " Actif maintenant"}
+                    </span>
+                  </span>
+                </span>
+
+                <ChevronRight size={17} className="text-[#050033]" />
+              </div>
+            ) : (
+              <div className="rounded-[14px] border border-[#E5E7EB] p-3 text-center text-[13px] text-[#6B7280]">
+                {isEn ? "Detecting device..." : "Detection de l'appareil..."}
+              </div>
+            )}
           </div>
         </MobileCard>
 

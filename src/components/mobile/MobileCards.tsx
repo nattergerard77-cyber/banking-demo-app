@@ -9,7 +9,6 @@ import {
   CreditCard,
   Globe2,
   LockKeyhole,
-  ReceiptText,
   ShieldCheck,
   Smartphone,
   Snowflake,
@@ -20,37 +19,6 @@ import MobileShell from "./MobileShell";
 import DemoModal from "../shared/DemoModal";
 import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
-
-const transactions = [
-  {
-    merchant: "Paiement carte — Station-service",
-    date: "24 mai 2024",
-    category: "Carburant",
-    amount: "- 64,30 €",
-    icon: CreditCard,
-  },
-  {
-    merchant: "Paiement carte — Supermarché",
-    date: "23 mai 2024",
-    category: "Courses",
-    amount: "- 58,73 €",
-    icon: ReceiptText,
-  },
-  {
-    merchant: "Retrait DAB — Luxembourg",
-    date: "21 mai 2024",
-    category: "Retrait",
-    amount: "- 120,00 €",
-    icon: CreditCard,
-  },
-  {
-    merchant: "Paiement carte — Restaurant",
-    date: "19 mai 2024",
-    category: "Restaurant",
-    amount: "- 86,20 €",
-    icon: ReceiptText,
-  },
-];
 
 function MobileCard({
   children,
@@ -417,54 +385,7 @@ export function MobileCards() {
           </div>
         </MobileCard>
         
-        {/* 5. Dernières opérations */}
-        <MobileCard className="p-4">
-          <div className="mb-4 flex items-center justify-between group">
-            <h2 className="text-[17px] font-bold text-[#090927]">
-              Dernières opérations
-            </h2>
-            <button type="button" onClick={() => setModal("all")} className="flex items-center gap-1 text-[13px] font-semibold text-[#050033] interactive-link group">
-              Voir toutes
-              <ChevronRight size={14} className="arrow-icon" />
-            </button>
-          </div>
-
-          <div className="divide-y divide-[#E5E7EB]">
-            {transactions.map((transaction) => {
-              const Icon = transaction.icon;
-              return (
-                <div
-                  key={transaction.merchant + transaction.date}
-                  className="flex items-center gap-3 py-3"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F3F4F6] text-[#050033]">
-                    <Icon size={18} />
-                  </span>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-bold text-[#090927]">
-                      {transaction.merchant}
-                    </p>
-                    <p className="mt-0.5 text-[12px] text-[#6B7280]">
-                      {transaction.category}
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="text-[14px] font-bold text-[#050033]">
-                      {transaction.amount}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-[#6B7280]">
-                      {transaction.date}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </MobileCard>
-
-        {/* 6. Sécurité carte */}
+        {/* 5. Sécurité carte */}
         <MobileCard className="p-4">
           <h2 className="text-[17px] font-bold text-[#090927]">
             Sécurité carte

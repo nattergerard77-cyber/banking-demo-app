@@ -10,8 +10,6 @@ import {
   CreditCard,
   Globe2,
   LockKeyhole,
-  MoreVertical,
-  ReceiptText,
   ShieldCheck,
   Smartphone,
   Snowflake,
@@ -23,37 +21,6 @@ import DemoModal from "../shared/DemoModal";
 import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
 import { useLastLogin } from "@/hooks/useLastLogin";
-
-const cardTransactions = [
-  {
-    merchant: "Paiement carte — Station-service",
-    date: "24 mai 2024",
-    category: "Carburant",
-    amount: "- 64,30 €",
-    icon: CreditCard,
-  },
-  {
-    merchant: "Paiement carte — Supermarché",
-    date: "23 mai 2024",
-    category: "Courses",
-    amount: "- 58,73 €",
-    icon: ReceiptText,
-  },
-  {
-    merchant: "Retrait DAB — Luxembourg",
-    date: "21 mai 2024",
-    category: "Retrait",
-    amount: "- 120,00 €",
-    icon: CreditCard,
-  },
-  {
-    merchant: "Paiement carte — Restaurant",
-    date: "19 mai 2024",
-    category: "Restaurant",
-    amount: "- 86,20 €",
-    icon: ReceiptText,
-  },
-];
 
 function CardBox({
   children,
@@ -250,7 +217,7 @@ export function DesktopCards() {
     etranger: true,
     internet: true,
   });
-  const [activeModal, setActiveModal] = useState<null | "limits" | "freeze" | "oppose" | "all">(null);
+  const [activeModal, setActiveModal] = useState<null | "limits" | "freeze" | "oppose">(null);
   const showToast = (message: string) => setToast(message);
 
   return (
@@ -367,76 +334,7 @@ export function DesktopCards() {
 
         {/* Ligne 2 */}
         <div className="grid grid-cols-12 gap-5">
-          <CardBox className="col-span-7 p-5">
-            <div className="mb-5 flex items-center justify-between group">
-              <h2 className="text-[18px] font-bold text-[#090927]">
-                Dernières opérations carte
-              </h2>
-
-              <button
-                type="button"
-                onClick={() => setActiveModal("all")}
-                className="flex items-center gap-1 text-[14px] font-semibold text-[#050033] interactive-link group"
-              >
-                Voir toutes
-                <ChevronRight size={16} className="arrow-icon" />
-              </button>
-            </div>
-
-            <div className="overflow-hidden rounded-[12px] border border-[#E5E7EB]">
-              <div className="grid grid-cols-[1fr_130px_120px_50px] bg-[#F9FAFB] px-4 py-3 text-[12px] font-bold uppercase text-[#6B7280]">
-                <span>Commerçant</span>
-                <span>Date</span>
-                <span className="text-right">Montant</span>
-                <span />
-              </div>
-
-              {cardTransactions.map((transaction) => {
-                const Icon = transaction.icon;
-
-                return (
-                  <div
-                    key={transaction.merchant}
-                    className="grid grid-cols-[1fr_130px_120px_50px] items-center border-t border-[#E5E7EB] px-4 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F3F4F6] text-[#050033]">
-                        <Icon size={18} />
-                      </span>
-
-                      <div>
-                        <p className="text-[14px] font-bold text-[#090927]">
-                          {transaction.merchant}
-                        </p>
-                        <p className="mt-1 text-[12px] text-[#6B7280]">
-                          {transaction.category}
-                        </p>
-                      </div>
-                    </div>
-
-                    <span className="text-[13px] text-[#6B7280]">
-                      {transaction.date}
-                    </span>
-
-                    <span className="text-right text-[14px] font-bold text-[#050033]">
-                      {transaction.amount}
-                    </span>
-
-                    <button
-                      type="button"
-                      aria-label={`Menu actions pour ${transaction.merchant}`}
-                      onClick={() => showToast("Menu ouvert.") }
-                      className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-[#050033] interactive-button"
-                    >
-                      <MoreVertical size={17} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </CardBox>
-
-          <CardBox className="col-span-5 p-5">
+          <CardBox className="col-span-12 p-5">
             <h2 className="text-[18px] font-bold text-[#090927]">
               Options de paiement
             </h2>
@@ -537,18 +435,12 @@ export function DesktopCards() {
       <DemoModal
         open={activeModal === "oppose"}
         title="Faire opposition"
-        message="Confirmez la demande d’opposition de cette carte."
+        message="Confirmez la demande d\u2019opposition de cette carte."
         onClose={() => setActiveModal(null)}
         onConfirm={() => {
           setActiveModal(null);
           showToast("Opposition enregistree ");
         }}
-      />
-      <DemoModal
-        open={activeModal === "all"}
-        title="Toutes les operations"
-        message="La liste complète des opérations carte est affichée."
-        onClose={() => setActiveModal(null)}
       />
       <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />
     </DesktopShell>
