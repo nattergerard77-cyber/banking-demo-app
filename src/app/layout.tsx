@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import Script from 'next/script';
 import './globals.css';
 import { LanguageProvider } from '@/context/LanguageContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { MessageProvider } from '@/context/MessageContext';
 import HtmlLangUpdater from '@/components/shared/HtmlLangUpdater';
+import { ThemeInitializer } from '@/components/shared/ThemeInitializer';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -21,17 +21,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr" suppressHydrationWarning>
-      <head>
-        <Script
-          id="theme-init"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html:
-              '(() => { try { const theme = localStorage.getItem("theme"); document.documentElement.classList.toggle("dark", theme === "dark"); } catch (_) {} })();',
-          }}
-        />
-      </head>
       <body className={`${inter.className} bg-global text-main antialiased`}>
+        <ThemeInitializer />
         <LanguageProvider>
           <NotificationProvider>
             <MessageProvider>
