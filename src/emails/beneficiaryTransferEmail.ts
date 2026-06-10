@@ -23,6 +23,50 @@ function maskIban(iban: string): string {
   return `${c.slice(0, 4)} **** **** ${c.slice(-4)}`;
 }
 
+export function buildBeneficiaryTransferText(
+  payload: BeneficiaryTransferEmailPayload,
+): string {
+  const beneficiaryName = payload.beneficiaryName;
+  const amount = payload.amount;
+  const ordererName = payload.ordererName;
+  const executionDate = payload.executionDate;
+  const reference = payload.reference;
+  const reason = payload.reason;
+
+  const lines = [
+    "AVIS DE VIREMENT",
+    "",
+    `Bonjour ${beneficiaryName},`,
+    "",
+    "Un virement a ete emis en votre faveur.",
+    "",
+    `Montant : ${amount}`,
+    `Reference : ${reference}`,
+    `Date d'execution prevue : ${executionDate}`,
+    `Donneur d'ordre : ${ordererName}`,
+  ];
+
+  if (reason) {
+    lines.push(`Motif : ${reason}`);
+  }
+
+  lines.push(
+    "",
+    "Le justificatif detaille est joint a cet email au format PDF.",
+    "",
+    "Aucune action n'est requise de votre part.",
+    "",
+    "Cordialement,",
+    "Service Operations Raiffeisen",
+    "",
+    "---",
+    "Cet email a ete genere automatiquement. Merci de ne pas y repondre.",
+    "Besoin d'aide ? Contactez le support a l'adresse indiquee par votre banque.",
+  );
+
+  return lines.join("\n");
+}
+
 export function buildBeneficiaryTransferHtml(
   payload: BeneficiaryTransferEmailPayload,
 ): string {
@@ -85,7 +129,7 @@ export function buildBeneficiaryTransferHtml(
                     <td style="padding:16px;background:#f0f4f9;border-radius:10px;border-left:4px solid #7aa600;">
                       <table role="presentation" cellspacing="0" cellpadding="0">
                         <tr>
-                          <td width="36" valign="top" style="font-size:20px;color:#7aa600;">✓</td>
+                          <td width="70" valign="top" style="font-size:11px;font-weight:700;color:#7aa600;text-transform:uppercase;letter-spacing:0.5px;">CONFIRMÉ</td>
                           <td style="font-size:14px;line-height:1.6;color:#334155;">
                             Un virement en votre faveur a été <strong>enregistré avec succès</strong> et est actuellement en cours de traitement.
                           </td>
@@ -241,11 +285,10 @@ export function buildBeneficiaryTransferHtml(
             </tr>
             <tr>
               <td style="padding:16px 32px 24px;" class="content-cell">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #fde68a;border-radius:10px;background:#fef3c7;border-left:4px solid #d97706;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
                   <tr>
-                    <td width="32" valign="top" style="padding:14px 0 14px 14px;font-size:16px;color:#d97706;">⚠</td>
-                    <td style="padding:14px 14px 14px 6px;font-size:13px;line-height:1.5;color:#7c2d12;">
-                      Par mesure de sécurité, Raiffeisen ne vous demandera jamais de communiquer vos identifiants, mots de passe ou codes de sécurité par email.
+                    <td style="padding:14px;font-size:13px;line-height:1.5;color:#64748b;">
+                      Pour votre sécurité, vérifiez toujours l'origine des messages reçus et contactez le support en cas de doute.
                     </td>
                   </tr>
                 </table>

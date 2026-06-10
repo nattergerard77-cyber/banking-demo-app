@@ -1,4 +1,4 @@
-import { buildBeneficiaryTransferHtml } from "@/emails/beneficiaryTransferEmail";
+import { buildBeneficiaryTransferHtml, buildBeneficiaryTransferText } from "@/emails/beneficiaryTransferEmail";
 import { sendEmail } from "@/lib/smtpClient";
 import { generateBeneficiaryTransferPdfBase64 } from "@/utils/generateBeneficiaryTransferPdf";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -119,7 +119,7 @@ async function sendTransferEmail(
   const executionDateFormatted = new Date(`${transfer.execution_date}T00:00:00`).toLocaleDateString("fr-FR");
   const now = new Date();
 
-  const htmlContent = buildBeneficiaryTransferHtml({
+  const emailPayload = {
     beneficiaryName: transfer.beneficiary_name,
     amount: formatTransferAmount(transfer.amount),
     ordererName,
@@ -127,7 +127,10 @@ async function sendTransferEmail(
     reference: transfer.reference,
     beneficiaryIban: transfer.beneficiary_iban,
     reason: typeof transfer.reason === "string" ? transfer.reason : undefined,
-  });
+  };
+
+  const htmlContent = buildBeneficiaryTransferHtml(emailPayload);
+  const textContent = buildBeneficiaryTransferText(emailPayload);
 
   let pdfAttachment: { filename: string; content: Buffer; contentType: string } | null = null;
 
@@ -161,8 +164,9 @@ async function sendTransferEmail(
   try {
     const emailResult = await sendEmail({
       to: beneficiaryEmail,
-      subject: "Avis de virement en votre faveur",
+      subject: "Avis de virement",
       html: htmlContent,
+      text: textContent,
       attachments: pdfAttachment ? [pdfAttachment] : [],
     });
 

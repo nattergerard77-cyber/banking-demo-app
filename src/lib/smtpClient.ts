@@ -10,6 +10,8 @@ export interface SendEmailOptions {
   to: string;
   subject: string;
   html: string;
+  text?: string;
+  replyTo?: string;
   attachments?: EmailAttachment[];
 }
 
@@ -22,6 +24,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
     const smtpPassword = process.env.SMTP_PASSWORD;
     const smtpFromEmail = process.env.SMTP_FROM_EMAIL;
     const smtpFromName = process.env.SMTP_FROM_NAME || 'Raiffeisen';
+    const defaultReplyTo = process.env.SMTP_REPLY_TO || smtpFromEmail;
 
     if (!smtpHost || !smtpUser || !smtpPassword || !smtpFromEmail) {
       throw new Error('SMTP configuration missing in environment variables');
@@ -38,16 +41,15 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
       connectionTimeout: 10000,
       greetingTimeout: 10000,
       socketTimeout: 15000,
-      tls: {
-        rejectUnauthorized: false,
-      },
     });
 
     const result = await transporter.sendMail({
       from: `${smtpFromName} <${smtpFromEmail}>`,
       to: options.to,
       subject: options.subject,
+      text: options.text,
       html: options.html,
+      replyTo: options.replyTo || defaultReplyTo,
       attachments: options.attachments || [],
     });
 
