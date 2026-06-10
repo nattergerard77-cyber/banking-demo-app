@@ -29,6 +29,7 @@ import { generateTransferPdf } from "@/utils/generateTransferPdf";
 import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
+import { createSafeId } from "@/utils/safeId";
 
 type DirectTransferLocalErrors = DirectTransferErrors & { executionDate?: string };
 
@@ -333,7 +334,7 @@ export default function DesktopDirectTransfer() {
       reason: formData.reason.trim() || "Virement",
       transferType: selectedTransferTypeId,
       executionDate: selectedTransferTypeId === "scheduled" ? formData.executionDate : todayDateString(),
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: createSafeId("transfer"),
     };
   }
 

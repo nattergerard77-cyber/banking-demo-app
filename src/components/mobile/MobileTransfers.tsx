@@ -16,6 +16,7 @@ import MobileShell from "./MobileShell";
 import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
 import type { SupabaseAccount } from "@/types/supabase";
+import { createSafeId } from "@/utils/safeId";
 
 type Beneficiary = { id: string; name: string; type: string; iban: string; bank: string; email: string; phone: string; initials: string };
 type RecentTransferItem = { id: string; beneficiaryName: string; date: string; reason: string | null; amount: string; status: string; reference: string };
@@ -381,7 +382,7 @@ export default function MobileTransfers() {
       reason: reason.trim() || "Virement",
       transferType: selectedTransferTypeId || "instant",
       executionDate: selectedTransferTypeId === "scheduled" ? (scheduledDate || todayDateString()) : todayDateString(),
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: createSafeId("transfer"),
     };
   }
 

@@ -16,6 +16,7 @@ import { generateTransferPdf } from "@/utils/generateTransferPdf";
 import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
+import { createSafeId } from "@/utils/safeId";
 
 const transferTypes = [
   { id: "instant", label: "Virement immediat", description: "Execution des validation" },
@@ -472,7 +473,7 @@ export default function DesktopTransfers() {
       reason: reason.trim() || "Virement",
       transferType: selectedTransferTypeId || "instant",
       executionDate: selectedTransferTypeId === "scheduled" ? (scheduledDate || todayDateString()) : todayDateString(),
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: createSafeId("transfer"),
     };
   }
 
