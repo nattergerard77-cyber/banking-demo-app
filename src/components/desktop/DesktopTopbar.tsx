@@ -2,7 +2,7 @@
 
 import { Search, ChevronDown, Bell, Check, User, ShieldCheck, FileText, Settings, LogOut, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getLanguageMeta, languages } from '@/utils/i18n';
 import { useLanguage } from '@/context/LanguageContext';
@@ -16,6 +16,12 @@ export default function DesktopTopbar() {
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const router = useRouter();
   const { unreadCount } = useNotifications();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   const currentLanguage = getLanguageMeta(language);
   const isEn = language === 'en';
@@ -134,7 +140,7 @@ export default function DesktopTopbar() {
         {/* Notifications */}
         <Link href="/notifications" aria-label={isEn ? "Open notifications" : "Ouvrir les notifications"} className="relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy rounded-full interactive-link">
           <Bell size={24} className="text-text-secondary hover:text-navy transition-colors" />
-          {unreadCount > 0 ? (
+          {mounted && unreadCount > 0 ? (
             <div className="absolute -top-1 -right-1 bg-success text-white text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
               {unreadCount}
             </div>

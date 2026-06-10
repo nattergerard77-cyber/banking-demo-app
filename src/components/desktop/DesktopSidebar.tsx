@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { navigationItems } from '@/data/navigation';
 import AppLogo from '../shared/AppLogo';
 import { 
@@ -23,6 +24,12 @@ export default function DesktopSidebar() {
   const { t } = useLanguage();
   const { unreadCount } = useNotifications();
   const { unreadMessagesCount } = useMessages();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   return (
     <div className="sticky top-0 h-screen w-[280px] bg-card border-r border-border flex-col hidden lg:flex">
@@ -58,7 +65,7 @@ export default function DesktopSidebar() {
                 {Icon && <Icon size={20} className={isActive ? "text-white" : "text-text-muted"} />}
                 <span>{t(`sidebar.nav.${item.href.replace('/', '')}`)}</span>
               </div>
-              {badgeCount > 0 && (
+              {mounted && badgeCount > 0 && (
                 <div className="bg-success text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                   {badgeCount}
                 </div>

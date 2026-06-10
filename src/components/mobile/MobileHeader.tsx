@@ -3,7 +3,7 @@
 import AppLogo from '../shared/AppLogo';
 import { Bell, ChevronDown, Check, User, ShieldCheck, FileText, Settings, LogOut, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { getLanguageMeta, languages } from '@/utils/i18n';
@@ -16,6 +16,13 @@ export default function MobileHeader() {
   const router = useRouter();
   const { language, setLanguage, t } = useLanguage();
   const { unreadCount } = useNotifications();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+
   const currentLanguage = getLanguageMeta(language);
   const isEn = language === 'en';
 
@@ -94,7 +101,7 @@ export default function MobileHeader() {
         {/* Notifications */}
         <Link href="/notifications" aria-label={isEn ? "Open notifications" : "Ouvrir les notifications"} className="relative interactive-link">
           <Bell size={22} className="text-[#050033]" />
-          {unreadCount > 0 ? <div className="absolute -top-0.5 right-0 bg-[#9ACD00] h-2.5 w-2.5 rounded-full border-2 border-white"></div> : null}
+          {mounted && unreadCount > 0 ? <div className="absolute -top-0.5 right-0 bg-[#9ACD00] h-2.5 w-2.5 rounded-full border-2 border-white"></div> : null}
         </Link>
 
         {/* Profile */}
