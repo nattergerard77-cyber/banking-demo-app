@@ -1,286 +1,294 @@
-import { jsPDF } from "jspdf";
+import jsPDF from "jspdf";
 
-export type BeneficiaryTransferPdfPayload = {
+function drawCheck(doc: jsPDF, cx: number, cy: number, r: number): void {
+  doc.setFillColor(122, 166, 0);
+  doc.setDrawColor(122, 166, 0);
+  doc.circle(cx, cy, r, "DF");
+
+  doc.setFillColor(255, 255, 255);
+  const s = r * 0.42;
+  doc.setLineWidth(2.5);
+  doc.setDrawColor(255, 255, 255);
+  doc.line(cx - s, cy, cx - s * 0.15, cy + s * 0.6);
+  doc.line(cx + s * 0.15, cy + s * 0.6, cx + s, cy - s * 0.5);
+}
+
+function drawQrPlaceholder(doc: jsPDF, x: number, y: number, size: number): void {
+  doc.setDrawColor(200, 200, 200);
+  doc.setFillColor(248, 248, 248);
+  doc.roundedRect(x, y, size, size, 2, 2, "DF");
+  doc.setFontSize(7);
+  doc.setTextColor(150, 150, 150);
+  doc.text("QR", x + size / 2, y + size / 2, { align: "center", baseline: "middle" });
+}
+
+type PdfPayload = {
   beneficiaryName: string;
-  beneficiaryBank: string;
-  beneficiaryIban: string;
-  ordererName: string;
   amount: string;
-  reference: string;
+  ordererName: string;
   executionDate: string;
-  validationDate: string;
-  validationTime: string;
-  reason: string;
+  reference: string;
+  beneficiaryIban?: string;
+  ordererIban?: string;
+  reason?: string;
+  // used by route.ts caller
+  beneficiaryBank?: string;
+  validationDate?: string;
+  validationTime?: string;
 };
 
-export type BeneficiaryTransferPdfResult = {
+type PdfResult = {
   fileName: string;
   base64: string;
 };
 
-const NAVY = { r: 7, g: 17, b: 58 };
-const GREEN = { r: 122, g: 166, b: 0 };
-const GREEN_LIGHT = { r: 244, g: 249, b: 232 };
-const TEXT = { r: 15, g: 23, b: 42 };
-const MUTED = { r: 100, g: 116, b: 139 };
-const BORDER = { r: 229, g: 231, b: 235 };
-const WHITE = { r: 255, g: 255, b: 255 };
+function escapeText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 
-function safeText(value: string | undefined | null): string {
-  return value && value.trim().length > 0 ? value.trim() : "-";
+function maskIbanRaw(iban: string): string {
+  const c = iban.replace(/\s+/g, "");
+  if (c.length < 10) return iban;
+  return `${c.slice(0, 4)} **** **** ${c.slice(-4)}`;
+}
+
+export function generateBeneficiaryTransferPdf(payload: PdfPayload): jsPDF {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const PAGE_W = 210;
+  const PAGE_H = 297;
+  const M = 20;
+  const bodyX = M;
+  const bodyW = PAGE_W - 2 * M;
+  let y = M;
+
+  doc.setFont("Helvetica", "normal");
+
+  // Colors
+  const NAVY = [11, 31, 58] as const;
+  const GOLD = [212, 175, 55] as const;
+  const GREEN = [122, 166, 0] as const;
+  const MUTED = [100, 116, 139] as const;
+  const LIGHT_BG = [248, 250, 252] as const;
+  const BORDER = [226, 232, 240] as const;
+
+  // ── HEADER ──
+  doc.setFillColor(...NAVY);
+  doc.rect(0, 0, PAGE_W, 48, "F");
+
+  doc.setFont("Helvetica", "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(255, 255, 255);
+  doc.text("RAIFFEISEN", PAGE_W / 2, 20, { align: "center" });
+
+  doc.setDrawColor(...GOLD);
+  doc.setLineWidth(0.8);
+  doc.line(PAGE_W / 2 - 15, 25.5, PAGE_W / 2 + 15, 25.5);
+
+  doc.setFont("Helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(180, 190, 205);
+  doc.text("Avis de virement reçu", PAGE_W / 2, 33, { align: "center" });
+  doc.setFontSize(7);
+  doc.text("Service Opérations Bancaires", PAGE_W / 2, 38.5, { align: "center" });
+
+  y = 60;
+
+  // ── CONFIRMATION BANNER ──
+  doc.setFillColor(240, 244, 249);
+  doc.setDrawColor(...GREEN);
+  doc.setLineWidth(0.6);
+  doc.roundedRect(bodyX, y, bodyW, 16, 2, 2, "FD");
+
+  drawCheck(doc, bodyX + 10, y + 8, 4.5);
+  doc.setFont("Helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(30, 50, 70);
+  doc.text("Virement enregistré avec succès — en cours de traitement", bodyX + 18, y + 11);
+
+  y += 28;
+
+  // ── AMOUNT CARD ──
+  doc.setDrawColor(...BORDER);
+  doc.setLineWidth(0.4);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(bodyX, y, bodyW, 36, 3, 3, "FD");
+
+  doc.setFillColor(...GREEN);
+  doc.rect(bodyX, y, 3, 36, "F");
+
+  doc.setFont("Helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...MUTED);
+  doc.text("MONTANT REÇU", bodyX + 14, y + 9);
+
+  doc.setFont("Helvetica", "bold");
+  doc.setFontSize(28);
+  doc.setTextColor(...NAVY);
+  doc.text(payload.amount, bodyX + 14, y + 30);
+
+  doc.setFont("Helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(...MUTED);
+  doc.text("Devise : EUR", bodyX + 14, y + 37); // outside card but close
+
+  y += 48;
+
+  // ── CARD helper ──
+  function drawInfoCard(
+    title: string,
+    rows: [string, string][],
+    startY: number,
+    doc: jsPDF,
+  ): number {
+    const cardH = 12 + rows.length * 11;
+    doc.setDrawColor(...BORDER);
+    doc.setLineWidth(0.4);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(bodyX, startY, bodyW, cardH, 3, 3, "FD");
+
+    doc.setFillColor(...LIGHT_BG);
+    doc.rect(bodyX + 1, startY + 1, bodyW - 2, 10, "F");
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...NAVY);
+    doc.text(title, bodyX + 12, startY + 8);
+
+    let cy = startY + 20;
+    for (const [label, value] of rows) {
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...MUTED);
+      doc.text(label, bodyX + 12, cy);
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...NAVY);
+      doc.text(value, bodyX + bodyW - 12, cy, { align: "right" });
+      cy += 11;
+    }
+    return startY + cardH + 8;
+  }
+
+  // ── BENEFICIARY INFO ──
+  const beneficiaryRows: [string, string][] = [
+    ["Bénéficiaire", payload.beneficiaryName],
+    ["IBAN bénéficiaire", payload.beneficiaryIban ? maskIbanRaw(payload.beneficiaryIban) : "-"],
+  ];
+  y = drawInfoCard("Informations du bénéficiaire", beneficiaryRows, y, doc);
+
+  // ── ORDERER INFO ──
+  const ordererRows: [string, string][] = [
+    ["Donneur d'ordre", payload.ordererName],
+  ];
+  if (payload.reason) {
+    ordererRows.push(["Raison du virement", payload.reason]);
+  }
+  if (payload.ordererIban) {
+    ordererRows.push(["IBAN donneur", maskIbanRaw(payload.ordererIban)]);
+  }
+  y = drawInfoCard("Informations du donneur d'ordre", ordererRows, y, doc);
+
+  // ── OPERATION INFO ──
+  const opRows: [string, string][] = [
+    ["Référence", payload.reference],
+    ["Date d'exécution prévue", payload.executionDate],
+    ["Statut", "Virement en cours de traitement"],
+  ];
+  y = drawInfoCard("Informations opération", opRows, y, doc);
+
+  // Ensure space for amounts card
+  if (y + 40 > PAGE_H - 30) {
+    doc.addPage();
+    y = M;
+  }
+
+  // ── AMOUNTS CARD ──
+  const amountsRows: [string, string][] = [
+    ["Montant virement", payload.amount],
+    ["Frais", "0,00 EUR"],
+    ["Total", payload.amount],
+  ];
+  y = drawInfoCard("Montants", amountsRows, y, doc);
+
+  // ── QR CODE ──
+  drawQrPlaceholder(doc, bodyX + bodyW - 28, y, 20);
+
+  y += 30;
+
+  // ── SECURITY NOTICE ──
+  if (y + 20 > PAGE_H - 35) {
+    doc.addPage();
+    y = M;
+  }
+
+  doc.setDrawColor(253, 230, 138);
+  doc.setFillColor(254, 243, 199);
+  doc.roundedRect(bodyX, y, bodyW, 14, 2, 2, "FD");
+  doc.setFont("Helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(124, 45, 18);
+  doc.text("Par mesure de s\u00e9curit\u00e9, Raiffeisen ne vous demandera jamais de communiquer vos identifiants,", bodyX + 4, y + 5.5);
+  doc.text("mots de passe ou codes de s\u00e9curit\u00e9 par email.", bodyX + 4, y + 11);
+
+  y += 24;
+
+  // ── FOOTER ──
+  if (y + 30 > PAGE_H) {
+    doc.addPage();
+    y = M;
+  }
+
+  doc.setDrawColor(...BORDER);
+  doc.setLineWidth(0.3);
+  doc.line(bodyX, y, bodyX + bodyW, y);
+  y += 6;
+  doc.setFont("Helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(...MUTED);
+  doc.text(
+    "Raiffeisen Bank — Service Opérations Bancaires | support@raiffeisen.com",
+    bodyX,
+    y,
+  );
+  y += 4;
+  doc.text("Cet avis a été généré automatiquement. Aucune signature n'est requise.", bodyX, y);
+
+  // ── PAGE NUMBERS ──
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(190, 190, 190);
+    doc.text(
+      `Page ${i} / ${pageCount}`,
+      PAGE_W - M,
+      PAGE_H - 10,
+      { align: "right" },
+    );
+  }
+
+  return doc;
 }
 
 function fileSafe(value: string): string {
-  const normalized = safeText(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  return normalized
-    .replace(/[^a-zA-Z0-9_-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
 }
 
-function ensureCurrency(value: string): string {
-  const clean = safeText(value);
-
-  if (clean.toUpperCase().includes("EUR") || clean.includes("€")) {
-    return clean;
-  }
-
-  return `${clean} EUR`;
-}
-
-function drawCheck(doc: jsPDF, cx: number, cy: number): void {
-  doc.setFillColor(GREEN_LIGHT.r, GREEN_LIGHT.g, GREEN_LIGHT.b);
-  doc.ellipse(cx, cy, 10, 10, "F");
-
-  doc.setDrawColor(GREEN.r, GREEN.g, GREEN.b);
-  doc.setLineWidth(0.8);
-  doc.ellipse(cx, cy, 6.5, 6.5, "D");
-
-  doc.setLineWidth(1.3);
-  doc.line(cx - 3, cy, cx - 0.8, cy + 2.4);
-  doc.line(cx - 0.8, cy + 2.4, cx + 4, cy - 3.2);
-}
-
-function drawQrPlaceholder(doc: jsPDF, x: number, y: number, size: number): void {
-  const cell = size / 9;
-  const filledCells: [number, number][] = [
-    [0, 0],
-    [0, 1],
-    [0, 2],
-    [0, 6],
-    [0, 7],
-    [0, 8],
-    [1, 0],
-    [1, 2],
-    [1, 4],
-    [1, 6],
-    [1, 8],
-    [2, 0],
-    [2, 1],
-    [2, 2],
-    [2, 5],
-    [2, 6],
-    [2, 7],
-    [2, 8],
-    [3, 1],
-    [3, 3],
-    [3, 5],
-    [3, 7],
-    [4, 0],
-    [4, 2],
-    [4, 4],
-    [4, 6],
-    [4, 8],
-    [5, 1],
-    [5, 3],
-    [5, 5],
-    [5, 7],
-    [6, 0],
-    [6, 1],
-    [6, 2],
-    [6, 4],
-    [6, 7],
-    [7, 0],
-    [7, 2],
-    [7, 5],
-    [7, 8],
-    [8, 0],
-    [8, 1],
-    [8, 2],
-    [8, 4],
-    [8, 6],
-    [8, 8],
-  ];
-
-  doc.setFillColor(WHITE.r, WHITE.g, WHITE.b);
-  doc.setDrawColor(BORDER.r, BORDER.g, BORDER.b);
-  doc.setLineWidth(0.3);
-  doc.rect(x, y, size, size, "FD");
-  doc.setFillColor(NAVY.r, NAVY.g, NAVY.b);
-
-  for (const [row, col] of filledCells) {
-    doc.rect(x + col * cell, y + row * cell, cell, cell, "F");
-  }
-}
-
-function drawHeaderPattern(doc: jsPDF): void {
-  doc.setDrawColor(38, 52, 92);
-  doc.setLineWidth(0.18);
-
-  for (let i = 0; i < 9; i++) {
-    const x = 154 + i * 6;
-    doc.line(x, 0, x + 14, 48);
-  }
-}
-
-function drawInfoRow(
-  doc: jsPDF,
-  label: string,
-  value: string,
-  x: number,
-  y: number,
-  width: number,
-  separator: boolean,
-): void {
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(MUTED.r, MUTED.g, MUTED.b);
-  doc.text(label, x, y);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
-  doc.setTextColor(TEXT.r, TEXT.g, TEXT.b);
-  const valueLines = doc.splitTextToSize(safeText(value), 78) as string[];
-  doc.text(valueLines.slice(0, 2), x + width, y, { align: "right" });
-
-  if (separator) {
-    doc.setDrawColor(BORDER.r, BORDER.g, BORDER.b);
-    doc.setLineWidth(0.15);
-    doc.line(x, y + 5, x + width, y + 5);
-  }
-}
-
-function drawCardTitle(doc: jsPDF, title: string, x: number, y: number): void {
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(NAVY.r, NAVY.g, NAVY.b);
-  doc.text(title, x, y);
-}
-
-export function generateBeneficiaryTransferPdfBase64(
-  payload: BeneficiaryTransferPdfPayload,
-): BeneficiaryTransferPdfResult {
-  const doc = new jsPDF("portrait", "mm", "a4");
-  const fileName = `Avis-virement-${fileSafe(payload.beneficiaryName)}-${fileSafe(
-    payload.reference,
-  )}.pdf`;
-
-  doc.setFillColor(NAVY.r, NAVY.g, NAVY.b);
-  doc.rect(0, 0, 210, 48, "F");
-  drawHeaderPattern(doc);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.setTextColor(WHITE.r, WHITE.g, WHITE.b);
-  doc.text("RAIFFEISEN", 105, 15, { align: "center" });
-
-  doc.setFillColor(GREEN.r, GREEN.g, GREEN.b);
-  doc.rect(94, 21, 22, 0.8, "F");
-
-  doc.setFontSize(24);
-  doc.text("Avis de virement", 105, 36, { align: "center" });
-
-  drawCheck(doc, 105, 66);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.setTextColor(GREEN.r, GREEN.g, GREEN.b);
-  doc.text("Virement en cours de traitement", 105, 84, { align: "center" });
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10.5);
-  doc.setTextColor(TEXT.r, TEXT.g, TEXT.b);
-  doc.text("Un virement a été enregistré en votre faveur", 105, 93, {
-    align: "center",
-  });
-
-  doc.setFontSize(10);
-  doc.text(`Bonjour ${safeText(payload.beneficiaryName)},`, 24, 108);
-  doc.text(
-    "Nous vous informons qu’un virement a été enregistré en votre faveur.",
-    24,
-    116,
-  );
-
-  doc.setFillColor(NAVY.r, NAVY.g, NAVY.b);
-  doc.roundedRect(24, 128, 162, 34, 3, 3, "F");
-  doc.setFillColor(GREEN.r, GREEN.g, GREEN.b);
-  doc.rect(24, 128, 3, 34, "F");
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
-  doc.setTextColor(WHITE.r, WHITE.g, WHITE.b);
-  doc.text("Montant reçu", 34, 141);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
-  doc.text(ensureCurrency(payload.amount), 34, 156);
-
-  doc.setFillColor(WHITE.r, WHITE.g, WHITE.b);
-  doc.setDrawColor(BORDER.r, BORDER.g, BORDER.b);
-  doc.setLineWidth(0.25);
-  doc.roundedRect(24, 174, 162, 42, 3, 3, "FD");
-  drawCardTitle(doc, "Informations du bénéficiaire", 34, 187);
-  drawInfoRow(doc, "Bénéficiaire", payload.beneficiaryName, 34, 199, 142, true);
-  drawInfoRow(doc, "Banque bénéficiaire", payload.beneficiaryBank, 34, 208, 142, true);
-  drawInfoRow(doc, "IBAN bénéficiaire", payload.beneficiaryIban, 34, 217, 142, false);
-
-  doc.setFillColor(WHITE.r, WHITE.g, WHITE.b);
-  doc.setDrawColor(BORDER.r, BORDER.g, BORDER.b);
-  doc.roundedRect(24, 224, 162, 52, 3, 3, "FD");
-  drawCardTitle(doc, "Informations opération", 34, 237);
-  drawInfoRow(doc, "Donneur d’ordre", payload.ordererName, 34, 247, 142, true);
-  drawInfoRow(doc, "Date d’exécution", payload.executionDate, 34, 255, 142, true);
-  drawInfoRow(doc, "Date de validation", payload.validationDate, 34, 263, 142, true);
-  drawInfoRow(doc, "Heure", payload.validationTime, 34, 271, 142, false);
-
-  doc.setFillColor(GREEN_LIGHT.r, GREEN_LIGHT.g, GREEN_LIGHT.b);
-  doc.setDrawColor(GREEN.r, GREEN.g, GREEN.b);
-  doc.roundedRect(24, 280, 162, 8, 3, 3, "FD");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(NAVY.r, NAVY.g, NAVY.b);
-  doc.text("Référence", 34, 285);
-  doc.text("Motif", 104, 285);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(TEXT.r, TEXT.g, TEXT.b);
-  doc.text(safeText(payload.reference), 54, 285);
-  doc.text(doc.splitTextToSize(safeText(payload.reason), 58)[0], 115, 285);
-
-  doc.setDrawColor(BORDER.r, BORDER.g, BORDER.b);
-  doc.setLineWidth(0.25);
-  doc.line(24, 289, 186, 289);
-  drawQrPlaceholder(doc, 24, 291, 4);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.setTextColor(TEXT.r, TEXT.g, TEXT.b);
-  doc.text("Service Opérations — Raiffeisen", 32, 292);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.5);
-  doc.setTextColor(MUTED.r, MUTED.g, MUTED.b);
-  doc.text("Document établi électroniquement et destiné au bénéficiaire.", 32, 295);
-  doc.text("Page 1 / 1", 176, 295, { align: "right" });
-
+export function generateBeneficiaryTransferPdfBase64(payload: PdfPayload): PdfResult {
+  const doc = generateBeneficiaryTransferPdf(payload);
+  const fileName = `Avis-virement-${fileSafe(payload.beneficiaryName)}-${fileSafe(payload.reference)}.pdf`;
   const dataUri = doc.output("datauristring");
-  const base64 = dataUri.split(",")[1];
-
-  return {
-    fileName,
-    base64,
-  };
+  const base64 = dataUri.includes("base64,") ? dataUri.split("base64,")[1] : dataUri;
+  return { fileName, base64 };
 }
+
+export { escapeText, maskIbanRaw };

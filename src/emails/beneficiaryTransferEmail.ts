@@ -17,6 +17,12 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function maskIban(iban: string): string {
+  const c = iban.replace(/\s+/g, "");
+  if (c.length < 10) return iban;
+  return `${c.slice(0, 4)} **** **** ${c.slice(-4)}`;
+}
+
 export function buildBeneficiaryTransferHtml(
   payload: BeneficiaryTransferEmailPayload,
 ): string {
@@ -26,7 +32,7 @@ export function buildBeneficiaryTransferHtml(
   const executionDate = escapeHtml(payload.executionDate);
   const reference = escapeHtml(payload.reference);
   const beneficiaryIban = payload.beneficiaryIban
-    ? escapeHtml(payload.beneficiaryIban)
+    ? maskIban(escapeHtml(payload.beneficiaryIban))
     : "";
   const reason = payload.reason ? escapeHtml(payload.reason) : "";
 
@@ -35,117 +41,238 @@ export function buildBeneficiaryTransferHtml(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
     <title>Avis de virement en votre faveur</title>
+    <style>
+      @media (max-width: 600px) {
+        .container { max-width: 100% !important; width: 100% !important; }
+        .header-cell { padding: 24px 16px !important; }
+        .content-cell { padding: 20px 16px !important; }
+        .amount-text { font-size: 32px !important; }
+        .card-inner { padding: 14px !important; }
+        .card-row { flex-direction: column !important; gap: 6px !important; }
+      }
+      @media (prefers-color-scheme: dark) {
+        .body-bg { background-color: #0f172a !important; }
+        .card-bg { background-color: #1e293b !important; }
+        .card-text { color: #f1f5f9 !important; }
+        .card-muted { color: #cbd5e1 !important; }
+        .card-border { border-color: #334155 !important; }
+        .content-bg { background-color: #0f172a !important; }
+        .security-bg { background-color: #422006 !important; border-color: #d97706 !important; }
+        .security-text { color: #fbbf24 !important; }
+        .footer-bg { background-color: #1e293b !important; }
+      }
+    </style>
   </head>
-  <body style="margin:0;background:#f3f6fb;color:#1f2937;font-family:Arial,Helvetica,sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;padding:32px 16px;">
+  <body style="margin:0;background:#f3f6fb;color:#1f2937;font-family:Arial,Helvetica,sans-serif;" class="body-bg">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;padding:32px 16px;" class="body-bg">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.08);" class="container card-bg">
             <tr>
-              <td style="background:#0b1f3a;color:#ffffff;padding:28px 32px;text-align:center;font-size:20px;font-weight:700;letter-spacing:1.5px;">
-                RAIFFEISEN
+              <td style="background:linear-gradient(135deg,#0b1f3a,#1a3a52);padding:40px 32px;text-align:center;" class="header-cell">
+                <div style="font-size:24px;font-weight:700;letter-spacing:3px;color:#ffffff;text-transform:uppercase;">RAIFFEISEN</div>
+                <div style="margin-top:20px;height:2px;width:60px;background:#d4af37;margin-left:auto;margin-right:auto;"></div>
+                <div style="margin-top:16px;font-size:14px;font-weight:400;color:#94a3b8;letter-spacing:0.5px;">Service Opérations Bancaires</div>
               </td>
             </tr>
             <tr>
-              <td style="padding:34px 32px 10px;">
-                <h1 style="margin:0;color:#0b1f3a;font-size:26px;line-height:1.25;font-weight:700;">
-                  Avis de virement en votre faveur
-                </h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:12px 32px 0;font-size:15px;line-height:1.7;color:#334155;">
-                <p style="margin:0 0 16px;">Bonjour ${beneficiaryName},</p>
-                <p style="margin:0 0 14px;">Nous vous informons qu’un virement a été initié en votre faveur.</p>
-                <p style="margin:0 0 14px;">Cette opération a été enregistrée avec succès et se trouve actuellement en cours de traitement. Les délais de crédit peuvent varier selon les établissements bancaires impliqués et les contrôles habituels applicables aux opérations de paiement.</p>
-                <p style="margin:0;">Vous trouverez en pièce jointe un avis de virement reprenant les détails de l’opération.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:28px 32px 18px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #d8e0ec;border-radius:14px;background:#f8fbff;overflow:hidden;">
+              <td style="padding:36px 32px 8px;" class="content-cell">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                   <tr>
-                    <td style="padding:18px 20px;color:#64748b;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">
-                      Montant reçu
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:0 20px 22px;color:#0b1f3a;font-size:32px;line-height:1.15;font-weight:700;">
-                      ${amount}
+                    <td style="padding:16px;background:#f0f4f9;border-radius:10px;border-left:4px solid #7aa600;">
+                      <table role="presentation" cellspacing="0" cellpadding="0">
+                        <tr>
+                          <td width="36" valign="top" style="font-size:20px;color:#7aa600;">✓</td>
+                          <td style="font-size:14px;line-height:1.6;color:#334155;">
+                            Un virement en votre faveur a été <strong>enregistré avec succès</strong> et est actuellement en cours de traitement.
+                          </td>
+                        </tr>
+                      </table>
                     </td>
                   </tr>
                 </table>
               </td>
             </tr>
             <tr>
-              <td style="padding:0 32px 18px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
-                  <tr>
-                    <td colspan="2" style="background:#f8fafc;padding:16px 20px;color:#0b1f3a;font-size:15px;font-weight:700;">
-                      Récapitulatif de l’opération
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Montant reçu</td>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#0b1f3a;font-size:14px;font-weight:700;text-align:right;">${amount}</td>
-                  </tr>
-                  <tr>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Donneur d’ordre</td>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${ordererName}</td>
-                  </tr>
-                  <tr>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Date d’exécution prévue</td>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${executionDate}</td>
-                  </tr>
-                   <tr>
-                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Référence</td>
-                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${reference}</td>
-                   </tr>
-                  ${beneficiaryIban ? `
-                    <tr>
-                      <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">IBAN bénéficiaire</td>
-                      <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${beneficiaryIban}</td>
-                    </tr>
-                  ` : ""}
-                  ${reason ? `
-                    <tr>
-                      <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Motif</td>
-                      <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${reason}</td>
-                    </tr>
-                  ` : ""}
-                   <tr>
-                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Statut</td>
-                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#0b1f3a;font-size:14px;font-weight:700;text-align:right;">Virement en cours de traitement</td>
-                   </tr>
-                </table>
+              <td style="padding:8px 32px 4px;font-size:15px;line-height:1.7;color:#334155;" class="content-cell card-text">
+                <p style="margin:0 0 4px;font-weight:700;color:#0b1f3a;font-size:16px;">Bonjour ${beneficiaryName},</p>
+                <p style="margin:12px 0 0;color:#475569;" class="card-muted">Un virement en votre faveur a été enregistré avec succès. Cette opération est actuellement en cours de traitement et s'affichera sur votre compte dans les délais habituels.</p>
+                <p style="margin:12px 0 0;color:#475569;" class="card-muted">Consultez ci-dessous les détails de ce virement pour référence.</p>
               </td>
             </tr>
             <tr>
-              <td style="padding:0 32px 18px;font-size:15px;line-height:1.7;color:#334155;">
-                <p style="margin:0;">Aucune action n’est requise de votre part à ce stade.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:0 32px 26px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #d8e0ec;border-radius:12px;background:#f8fafc;">
+              <td style="padding:24px 32px 14px;" class="content-cell">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:14px;background:#ffffff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);" class="card-border">
                   <tr>
-                    <td style="padding:16px 18px;color:#475569;font-size:13px;line-height:1.6;">
-                      Par mesure de sécurité, nous ne vous demanderons jamais de communiquer vos identifiants, mots de passe ou codes confidentiels par email.
+                    <td width="12" style="background:#7aa600;width:12px;padding:0;font-size:1px;line-height:1px;">&nbsp;</td>
+                    <td style="padding:24px 20px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                        <tr>
+                          <td style="font-size:13px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:6px;">Montant reçu</td>
+                        </tr>
+                        <tr>
+                          <td style="font-size:42px;font-weight:700;color:#0b1f3a;line-height:1.1;padding-bottom:4px;" class="amount-text card-text">${amount}</td>
+                        </tr>
+                        <tr>
+                          <td style="font-size:12px;color:#94a3b8;">Devise : EUR</td>
+                        </tr>
+                      </table>
                     </td>
                   </tr>
                 </table>
               </td>
             </tr>
             <tr>
-              <td style="padding:0 32px 34px;font-size:15px;line-height:1.7;color:#334155;">
-                <p style="margin:0 0 4px;">Cordialement,</p>
-                <p style="margin:0;">Service Opérations<br />Raiffeisen</p>
+              <td style="padding:0 32px 14px;" class="content-cell">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#ffffff;" class="card-border card-bg">
+                  <tr>
+                    <td style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;font-size:14px;font-weight:700;color:#0b1f3a;" class="card-border">
+                      Informations du bénéficiaire
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:12px 16px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                        <tr>
+                          <td width="40%" style="font-size:13px;color:#64748b;vertical-align:top;padding:6px 0;" class="card-muted">Bénéficiaire</td>
+                          <td width="60%" style="font-size:14px;color:#0b1f3a;font-weight:600;text-align:right;padding:6px 0;" class="card-text">${beneficiaryName}</td>
+                        </tr>
+                        <tr>
+                          <td style="font-size:13px;color:#64748b;vertical-align:top;padding:6px 0;border-top:1px solid #f1f5f9;" class="card-muted card-border">IBAN bénéficiaire</td>
+                          <td style="font-size:14px;color:#0b1f3a;font-weight:600;text-align:right;padding:6px 0;font-family:monospace;border-top:1px solid #f1f5f9;" class="card-text card-border">${beneficiaryIban || "-"}</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
             <tr>
-              <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:22px 32px;color:#64748b;font-size:13px;">
-                Service Opérations — Raiffeisen
+              <td style="padding:0 32px 14px;" class="content-cell">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#ffffff;" class="card-border card-bg">
+                  <tr>
+                    <td style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;font-size:14px;font-weight:700;color:#0b1f3a;" class="card-border">
+                      Informations du donneur d'ordre
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:12px 16px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                        <tr>
+                          <td width="40%" style="font-size:13px;color:#64748b;vertical-align:top;padding:6px 0;" class="card-muted">Donneur d'ordre</td>
+                          <td width="60%" style="font-size:14px;color:#0b1f3a;font-weight:600;text-align:right;padding:6px 0;" class="card-text">${ordererName}</td>
+                        </tr>
+                        ${reason ? `
+                        <tr>
+                          <td style="font-size:13px;color:#64748b;vertical-align:top;padding:6px 0;border-top:1px solid #f1f5f9;" class="card-muted card-border">Raison</td>
+                          <td style="font-size:14px;color:#0b1f3a;font-weight:600;text-align:right;padding:6px 0;border-top:1px solid #f1f5f9;" class="card-text card-border">${reason}</td>
+                        </tr>` : ""}
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 14px;" class="content-cell">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#ffffff;" class="card-border card-bg">
+                  <tr>
+                    <td style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;font-size:14px;font-weight:700;color:#0b1f3a;" class="card-border">
+                      Informations opération
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:12px 16px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                        <tr>
+                          <td width="40%" style="font-size:13px;color:#64748b;vertical-align:top;padding:6px 0;" class="card-muted">Référence</td>
+                          <td width="60%" style="font-size:14px;color:#0b1f3a;font-weight:600;text-align:right;padding:6px 0;font-family:monospace;" class="card-text">${reference}</td>
+                        </tr>
+                        <tr>
+                          <td style="font-size:13px;color:#64748b;vertical-align:top;padding:6px 0;border-top:1px solid #f1f5f9;" class="card-muted card-border">Date d'exécution prévue</td>
+                          <td style="font-size:14px;color:#0b1f3a;font-weight:600;text-align:right;padding:6px 0;border-top:1px solid #f1f5f9;" class="card-text card-border">${executionDate}</td>
+                        </tr>
+                        <tr>
+                          <td style="font-size:13px;color:#64748b;vertical-align:top;padding:6px 0;border-top:1px solid #f1f5f9;" class="card-muted card-border">Statut</td>
+                          <td style="font-size:14px;color:#7aa600;font-weight:700;text-align:right;padding:6px 0;border-top:1px solid #f1f5f9;" class="card-border">Virement en cours de traitement</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 20px;" class="content-cell">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#ffffff;" class="card-border card-bg">
+                  <tr>
+                    <td style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;font-size:14px;font-weight:700;color:#0b1f3a;" class="card-border">
+                      Montants
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:12px 16px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                        <tr>
+                          <td width="40%" style="font-size:13px;color:#64748b;vertical-align:top;padding:6px 0;" class="card-muted">Montant virement</td>
+                          <td width="60%" style="font-size:14px;color:#0b1f3a;font-weight:600;text-align:right;padding:6px 0;" class="card-text">${amount}</td>
+                        </tr>
+                        <tr>
+                          <td style="font-size:13px;color:#64748b;vertical-align:top;padding:6px 0;border-top:1px solid #f1f5f9;" class="card-muted card-border">Frais</td>
+                          <td style="font-size:14px;color:#7aa600;font-weight:600;text-align:right;padding:6px 0;border-top:1px solid #f1f5f9;" class="card-border">0,00 EUR</td>
+                        </tr>
+                        <tr>
+                          <td style="font-size:13px;color:#64748b;vertical-align:top;padding:8px 0;border-top:2px solid #e2e8f0;" class="card-muted card-border">Total</td>
+                          <td style="font-size:16px;color:#0b1f3a;font-weight:700;text-align:right;padding:8px 0;border-top:2px solid #e2e8f0;" class="card-text card-border">${amount}</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 4px;font-size:14px;line-height:1.6;color:#475569;" class="content-cell card-muted">
+                <p style="margin:0;">Aucune action n'est requise de votre part à ce stade. Vous trouverez en pièce jointe un avis de virement reprenant l'ensemble des détails de l'opération.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 32px 24px;" class="content-cell">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #fde68a;border-radius:10px;background:#fef3c7;border-left:4px solid #d97706;">
+                  <tr>
+                    <td width="32" valign="top" style="padding:14px 0 14px 14px;font-size:16px;color:#d97706;">⚠</td>
+                    <td style="padding:14px 14px 14px 6px;font-size:13px;line-height:1.5;color:#7c2d12;">
+                      Par mesure de sécurité, Raiffeisen ne vous demandera jamais de communiquer vos identifiants, mots de passe ou codes de sécurité par email.
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 28px;font-size:14px;line-height:1.7;color:#475569;" class="content-cell card-muted">
+                <p style="margin:0 0 8px;font-weight:700;color:#0b1f3a;" class="card-text">Cordialement,</p>
+                <p style="margin:0 0 2px;">Service Opérations Raiffeisen</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:20px 32px;" class="footer-bg card-border">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td style="font-size:12px;color:#94a3b8;line-height:1.6;">
+                      <p style="margin:0 0 4px;">Raiffeisen Bank — Service Opérations Bancaires</p>
+                      <p style="margin:0 0 4px;">Cet email a été généré automatiquement. Merci de ne pas y répondre.</p>
+                      <p style="margin:0;">Besoin d'aide ? Contactez notre support : <a href="mailto:support@raiffeisen.com" style="color:#7aa600;text-decoration:underline;">support@raiffeisen.com</a></p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding-top:12px;font-size:11px;color:#cbd5e1;border-top:1px solid #e2e8f0;margin-top:12px;">
+                      © 2026 Raiffeisen. Tous droits réservés.
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
           </table>
