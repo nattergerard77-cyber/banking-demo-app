@@ -24,6 +24,8 @@ export default function MobileLogin() {
   const [errors, setErrors] = useState<LoginErrors>({});
   const [clientIdFocus, setClientIdFocus] = useState(false);
   const [personalCodeFocus, setPersonalCodeFocus] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
   const router = useRouter();
   const { t, language, setLanguage } = useLanguage();
@@ -51,11 +53,29 @@ export default function MobileLogin() {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setLoginError('');
     if (!validate()) return;
-    addLoginNotification();
-    router.push('/dashboard');
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loginId: clientId.trim(), password: personalCode.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setLoginError(data.error || t('login.errors.passwordInvalid'));
+        return;
+      }
+      addLoginNotification();
+      router.push('/dashboard');
+    } catch {
+      setLoginError('Erreur réseau. Veuillez réessayer.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancel = () => {
@@ -230,6 +250,7 @@ export default function MobileLogin() {
                     value={clientId}
                     onChange={(event) => {
                       setClientId(event.target.value);
+                      setLoginError('');
                       if (errors.clientId) setErrors((current) => ({ ...current, clientId: undefined }));
                     }}
                     onFocus={() => setClientIdFocus(true)}
@@ -303,6 +324,7 @@ export default function MobileLogin() {
                     value={personalCode}
                     onChange={(event) => {
                       setPersonalCode(event.target.value);
+                      setLoginError('');
                       if (errors.personalCode) setErrors((current) => ({ ...current, personalCode: undefined }));
                     }}
                     onFocus={() => setPersonalCodeFocus(true)}
@@ -357,11 +379,17 @@ export default function MobileLogin() {
                 )}
               </div>
 
+              {loginError && (
+                <div style={{ marginBottom: '12px', fontSize: '14px', color: '#B42318', fontWeight: 500, textAlign: 'center' }}>
+                  {loginError}
+                </div>
+              )}
               {/* Buttons row */}
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button
                   type="button"
                   onClick={handleCancel}
+                  disabled={isLoading}
                   style={{
                     flex: 1,
                     height: '46px',
@@ -371,10 +399,12 @@ export default function MobileLogin() {
                     borderRadius: '4px',
                     fontSize: '15px',
                     fontWeight: 500,
-                    cursor: 'pointer',
+                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                    opacity: isLoading ? 0.5 : 1,
                     transition: 'all 0.15s',
                   }}
                   onMouseEnter={(e) => {
+                    if (isLoading) return;
                     (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#050033';
                     (e.currentTarget as HTMLButtonElement).style.color = '#FFFFFF';
                   }}
@@ -387,6 +417,7 @@ export default function MobileLogin() {
                 </button>
                 <button
                   type="submit"
+                  disabled={isLoading}
                   style={{
                     flex: 1,
                     height: '46px',
@@ -396,13 +427,14 @@ export default function MobileLogin() {
                     borderRadius: '4px',
                     fontSize: '15px',
                     fontWeight: 600,
-                    cursor: 'pointer',
+                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                    opacity: isLoading ? 0.6 : 1,
                     transition: 'opacity 0.15s',
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.88'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                  onMouseEnter={(e) => { if (!isLoading) (e.currentTarget as HTMLButtonElement).style.opacity = '0.88'; }}
+                  onMouseLeave={(e) => { if (!isLoading) (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
                 >
-                  {t('login.next')}
+                  {isLoading ? 'Connexion...' : t('login.next')}
                 </button>
               </div>
 

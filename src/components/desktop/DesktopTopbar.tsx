@@ -254,7 +254,10 @@ export default function DesktopTopbar() {
             </button>
             <button
               type="button"
-              onClick={() => router.push('/login')}
+              onClick={async () => {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                router.push('/login');
+              }}
               className="flex-1 h-[44px] rounded-[10px] bg-[#050033] text-[14px] font-semibold text-white hover:opacity-90 transition-opacity"
             >
               {t("common.logout") || (isEn ? "Sign out" : "Se déconnecter")}
