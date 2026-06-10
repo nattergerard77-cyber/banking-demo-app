@@ -18,7 +18,7 @@ import DemoToast from "../shared/DemoToast";
 import type { SupabaseAccount } from "@/types/supabase";
 
 type Beneficiary = { id: string; name: string; type: string; iban: string; bank: string; email: string; phone: string; initials: string };
-type TransferItem = { id: string; beneficiary: string; date: string; reason: string; amount: string; status: string; reference: string };
+type RecentTransferItem = { id: string; beneficiaryName: string; date: string; reason: string | null; amount: string; status: string; reference: string };
 
 type DebitAccountViewModel = {
   id: string;
@@ -107,7 +107,7 @@ export default function MobileTransfers() {
   const [addErrors, setAddErrors] = useState<Record<string, string>>({});
   const [showRecap, setShowRecap] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [showDetail, setShowDetail] = useState<TransferItem | null>(null);
+  const [showDetail, setShowDetail] = useState<RecentTransferItem | null>(null);
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [toast, setToast] = useState("");
@@ -129,12 +129,8 @@ export default function MobileTransfers() {
     { id: "recurring", label: t("transfers.types.permanent"), description: t("transfers.types.permanentDesc") },
   ], [t]);
 
-  const [now] = useState(() => Date.now());
-  const recentTransfers = useMemo(() => [
-    { id: "tx-1", beneficiary: "Luca Romano", date: new Date(now).toLocaleDateString("fr-FR"), reason: "Règlement privé", amount: "120", status: t("transactions.executed"), reference: "VR-260529-1274" },
-    { id: "tx-2", beneficiary: "Sofia Bianchi", date: new Date(now - 2 * 86400000).toLocaleDateString("fr-FR"), reason: t("transactions.gift"), amount: "75", status: t("transactions.executed"), reference: "VR-260527-9038" },
-    { id: "tx-3", beneficiary: "Marco Conti", date: new Date(now - 5 * 86400000).toLocaleDateString("fr-FR"), reason: t("transactions.invoice"), amount: "450", status: t("transactions.planned"), reference: "VR-260524-4417" },
-  ], [t, now]);
+  const [recentTransfers, setRecentTransfers] = useState<RecentTransferItem[]>([]);
+  const [recentTransfersLoading, setRecentTransfersLoading] = useState(true);
 
   const selectedBeneficiary = useMemo(() => beneficiaries.find((b) => b.id === selectedBeneficiaryId) ?? beneficiaries[0], [selectedBeneficiaryId, beneficiaries]);
   const selectedDebitAccount = useMemo(() => debitAccounts.find((a) => a.id === selectedDebitAccountId) ?? debitAccounts[0] ?? null, [selectedDebitAccountId, debitAccounts]);
@@ -183,6 +179,64 @@ export default function MobileTransfers() {
       ignore = true;
     };
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    void (async () => {
+      setRecentTransfersLoading(true);
+      try {
+        const res = await fetch("/api/transfers?limit=5");
+        const json = await res.json() as { success: boolean; transfers?: Array<Record<string, unknown>> };
+        if (ignore) return;
+        if (!json.success || !json.transfers) {
+          setRecentTransfers([]);
+          return;
+        }
+        const mapped: RecentTransferItem[] = json.transfers.map((item) => ({
+          id: String(item.id ?? ""),
+          beneficiaryName: String(item.beneficiaryName ?? ""),
+          date: item.executionDate
+            ? new Date(`${String(item.executionDate)}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+            : "",
+          reason: item.reason ? String(item.reason) : null,
+          amount: `${Number(item.amount).toFixed(2).replace(".", ",")} EUR`,
+          status: item.status === "executed" ? "Exécuté" : String(item.status ?? ""),
+          reference: String(item.reference ?? ""),
+        }));
+        setRecentTransfers(mapped);
+      } catch {
+        if (!ignore) setRecentTransfers([]);
+      } finally {
+        if (!ignore) setRecentTransfersLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
+  async function refreshRecentTransfers() {
+    try {
+      const res = await fetch("/api/transfers?limit=5");
+      const json = await res.json() as { success: boolean; transfers?: Array<Record<string, unknown>> };
+      if (!json.success || !json.transfers) {
+        setRecentTransfers([]);
+        return;
+      }
+      const mapped: RecentTransferItem[] = json.transfers.map((item) => ({
+        id: String(item.id ?? ""),
+        beneficiaryName: String(item.beneficiaryName ?? ""),
+        date: item.executionDate
+          ? new Date(`${String(item.executionDate)}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+          : "",
+        reason: item.reason ? String(item.reason) : null,
+        amount: `${Number(item.amount).toFixed(2).replace(".", ",")} EUR`,
+        status: item.status === "executed" ? "Exécuté" : String(item.status ?? ""),
+        reference: String(item.reference ?? ""),
+      }));
+      setRecentTransfers(mapped);
+    } catch {
+      setRecentTransfers([]);
+    }
+  }
 
   function selectTransferType(typeId: string) { resetEmailForNewTransfer(); setSelectedTransferTypeId(typeId); setIsRecurring(typeId === "recurring"); if (typeId === "scheduled" && !scheduledDate) setScheduledDate(todayInputValue()); setShowTypePicker(false); }
 
@@ -311,6 +365,7 @@ export default function MobileTransfers() {
       const nextEmailStatus = result.transfer?.email_status ?? result.emailStatus ?? "idle";
       setEmailStatus(nextEmailStatus);
       setEmailError(nextEmailStatus === "failed" ? "L'avis de virement n'a pas pu etre envoye au beneficiaire." : null);
+      void refreshRecentTransfers();
     } catch (error) {
       console.error("[transfer] submit failed", error);
       setSubmitError(
@@ -374,7 +429,7 @@ export default function MobileTransfers() {
             </div>
           </Card>
           <Card className="p-4"><div className="space-y-2 text-[14px]"><p className="flex justify-between"><span>{t("transfers.debitAccount")}</span><span>{accountsLoading ? "Chargement des comptes..." : selectedDebitAccount ? `${selectedDebitAccount.name} - ${selectedDebitAccount.last4}` : accountsError ? "Impossible de charger les comptes." : "Aucun compte disponible."}</span></p><p className="flex justify-between"><span>{t("transfers.beneficiary")}</span><span>{selectedBeneficiary.name}</span></p><p className="flex justify-between"><span>{t("common.amount")}</span><span>{totalFormatted}</span></p><p className="flex justify-between"><span>{t("common.date")}</span><span>{executionDate}</span></p></div><button type="button" onClick={openRecap} disabled={isAccountSelectionUnavailable} className="mt-4 h-11 w-full rounded-[10px] bg-[#050033] text-white disabled:cursor-not-allowed disabled:opacity-60">{t("common.continueBtn")}</button>{accountsError ? <p className="mt-2 text-[12px] text-[#DC2626]">Impossible de charger les comptes.</p> : null}{!accountsLoading && !accountsError && !selectedDebitAccount ? <p className="mt-2 text-[12px] text-[#6B7280]">Aucun compte disponible.</p> : null}</Card>
-          <Card className="p-4"><h2 className="font-bold">{t("transfers.recent")}</h2>{recentTransfers.map((item) => <button key={item.id} type="button" onClick={() => setShowDetail(item)} className="flex w-full items-center justify-between py-2 text-left"><span>{item.beneficiary}</span><span>- {formatAmount(item.amount)}</span></button>)}</Card>
+          <Card className="p-4"><h2 className="font-bold">{t("transfers.recent")}</h2>{recentTransfersLoading ? <p className="py-3 text-[13px] text-[#6B7280]">Chargement...</p> : recentTransfers.length === 0 ? <p className="py-3 text-[13px] text-[#6B7280]">Aucun virement recent.</p> : recentTransfers.map((item) => <button key={item.id} type="button" onClick={() => setShowDetail(item)} className="flex w-full items-center justify-between py-2 text-left"><span>{item.beneficiaryName}</span><span>- {item.amount}</span></button>)}</Card>
         </div>
       </MobileShell>
 
@@ -631,7 +686,7 @@ export default function MobileTransfers() {
       ) : null}
       {showAccountPicker ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4"><div className="flex items-center justify-between"><h2 className="text-[18px] font-bold">{t("transfers.chooseAccount")}</h2><button type="button" onClick={() => setShowAccountPicker(false)}><X size={18} /></button></div><div className="mt-3 space-y-2">{accountsLoading ? <p className="text-[14px] text-[#6B7280]">Chargement des comptes...</p> : accountsError ? <p className="text-[14px] text-[#DC2626]">Impossible de charger les comptes.</p> : debitAccounts.length === 0 ? <p className="text-[14px] text-[#6B7280]">Aucun compte disponible.</p> : debitAccounts.map((account) => { const isSelected = selectedDebitAccountId === account.id; return <button key={account.id} type="button" aria-pressed={isSelected} aria-label={`Selectionner ${account.name}`} onClick={() => { resetEmailForNewTransfer(); setSelectedDebitAccountId(account.id); setShowAccountPicker(false); }} className={`flex w-full items-center justify-between rounded-[12px] border px-3 py-3 text-left ${isSelected ? "border-[#9ACD00] bg-[#F7FBEA]" : "border-[#E5E7EB] bg-white"}`}><span><span className="block text-[14px] font-semibold">{account.name}</span><span className="block text-[12px] text-[#6B7280]">{account.balance} - {maskIban(account.iban)}</span></span>{isSelected ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>; })}</div></div></div> : null}
       {showTypePicker ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4">{transferTypes.map((type) => <button key={type.id} type="button" aria-pressed={selectedTransferTypeId === type.id} onClick={() => selectTransferType(type.id)} className={`mb-2 flex w-full items-center justify-between rounded-[12px] border p-3 text-left ${selectedTransferTypeId === type.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB]"}`}><span>{type.label}</span>{selectedTransferTypeId === type.id ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>)}</div></div> : null}
-      {showDetail ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4"><p>{t("transfers.beneficiary")} : {showDetail.beneficiary}</p><p>{t("common.reference")} : {showDetail.reference}</p><button type="button" onClick={() => setShowDetail(null)} className="mt-4 h-10 w-full rounded-[10px] bg-[#050033] text-white">{t("common.close")}</button></div></div> : null}
+      {showDetail ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div className="w-full rounded-2xl bg-white p-4"><p>{t("transfers.beneficiary")} : {showDetail.beneficiaryName}</p><p>{t("common.reference")} : {showDetail.reference}</p><button type="button" onClick={() => setShowDetail(null)} className="mt-4 h-10 w-full rounded-[10px] bg-[#050033] text-white">{t("common.close")}</button></div></div> : null}
       <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />
     </>
   );

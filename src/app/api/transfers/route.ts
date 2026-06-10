@@ -57,6 +57,21 @@ type AccountRecord = {
   [key: string]: unknown;
 };
 
+type TransferListItem = {
+  id: string;
+  reference: string;
+  beneficiaryName: string;
+  beneficiaryIban: string;
+  amount: number;
+  currency: string;
+  reason: string | null;
+  transferType: string;
+  executionDate: string;
+  status: string;
+  emailStatus: string;
+  createdAt: string;
+};
+
 function jsonResponse(body: TransferResponse, status: number) {
   return Response.json(body, { status });
 }
@@ -220,6 +235,48 @@ function rpcErrorStatus(error: unknown): number {
   if (msg.includes("INVALID_AMOUNT") || msg.includes("INVALID_TRANSFER_TYPE")) return 400;
   if (msg.includes("ACCOUNT_NOT_FOUND")) return 404;
   return 422;
+}
+
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const limitParam = url.searchParams.get("limit");
+    const limit = limitParam ? Math.min(Math.max(1, parseInt(limitParam)), 50) : 10;
+
+    const supabase = createServerSupabaseClient();
+
+    const { data, error } = await supabase
+      .from("transfers")
+      .select("id, reference, beneficiary_name, beneficiary_iban, amount, currency, reason, transfer_type, execution_date, status, email_status, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error("[api/transfers] GET failed:", error.message);
+      return Response.json({ success: false, error: "TRANSFERS_FETCH_FAILED", message: "Erreur lors du chargement des virements" }, { status: 500 });
+    }
+
+    const transfers: TransferListItem[] = (data ?? []).map((item) => ({
+      id: item.id,
+      reference: item.reference,
+      beneficiaryName: item.beneficiary_name,
+      beneficiaryIban: item.beneficiary_iban,
+      amount: Number(item.amount),
+      currency: item.currency ?? "EUR",
+      reason: item.reason,
+      transferType: item.transfer_type,
+      executionDate: item.execution_date,
+      status: item.status,
+      emailStatus: item.email_status,
+      createdAt: item.created_at,
+    }));
+
+    return Response.json({ success: true, transfers }, { status: 200 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[api/transfers] GET failed:", message);
+    return Response.json({ success: false, error: "TRANSFERS_FETCH_FAILED", message: "Erreur lors du chargement des virements" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {

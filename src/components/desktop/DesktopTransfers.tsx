@@ -50,12 +50,11 @@ type Beneficiary = {
   initials: string;
 };
 
-type TransferItem = {
+type RecentTransferItem = {
   id: string;
-  beneficiaryId: string;
-  beneficiary: string;
+  beneficiaryName: string;
   date: string;
-  reason: string;
+  reason: string | null;
   amount: string;
   status: string;
   reference: string;
@@ -67,21 +66,7 @@ const initialBeneficiaries: Beneficiary[] = [
   { id: "marco", name: "Marco Conti", type: "Particulier", iban: "LU82 0019 7777 8888 9999", bank: "Banque Internationale à Luxembourg", email: "marco.conti@example.com", phone: "+39 347 920 1186", initials: "MC" },
 ];
 
-const recentTransfers: TransferItem[] = [
-  { id: "tx-1", beneficiaryId: "luca", beneficiary: "Luca Romano", date: formatRelativeTransferDate(0), reason: "Règlement privé", amount: "120", status: "Exécuté", reference: "VR-260529-8421" },
-  { id: "tx-2", beneficiaryId: "sofia", beneficiary: "Sofia Bianchi", date: formatRelativeTransferDate(2), reason: "Participation familiale", amount: "75", status: "Exécuté", reference: "VR-260527-3142" },
-  { id: "tx-3", beneficiaryId: "marco", beneficiary: "Marco Conti", date: formatRelativeTransferDate(5), reason: "Règlement de service", amount: "450", status: "Planifié", reference: "VR-260524-6573" },
-];
 
-function formatRelativeTransferDate(offsetDays: number) {
-  const date = new Date();
-  date.setDate(date.getDate() - offsetDays);
-  return date.toLocaleDateString("fr-FR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-}
 
 function generateTemporaryReference() {
   const now = new Date();
@@ -200,7 +185,9 @@ export default function DesktopTransfers() {
 
   const [showRecap, setShowRecap] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [showDetail, setShowDetail] = useState<TransferItem | null>(null);
+  const [recentTransfers, setRecentTransfers] = useState<RecentTransferItem[]>([]);
+  const [recentTransfersLoading, setRecentTransfersLoading] = useState(true);
+  const [showDetail, setShowDetail] = useState<RecentTransferItem | null>(null);
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [validatedAt, setValidatedAt] = useState<Date | null>(null);
@@ -258,6 +245,64 @@ export default function DesktopTransfers() {
       ignore = true;
     };
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    void (async () => {
+      setRecentTransfersLoading(true);
+      try {
+        const res = await fetch("/api/transfers?limit=5");
+        const json = await res.json() as { success: boolean; transfers?: Array<Record<string, unknown>> };
+        if (ignore) return;
+        if (!json.success || !json.transfers) {
+          setRecentTransfers([]);
+          return;
+        }
+        const mapped: RecentTransferItem[] = json.transfers.map((item) => ({
+          id: String(item.id ?? ""),
+          beneficiaryName: String(item.beneficiaryName ?? ""),
+          date: item.executionDate
+            ? new Date(`${String(item.executionDate)}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+            : "",
+          reason: item.reason ? String(item.reason) : null,
+          amount: `${Number(item.amount).toFixed(2).replace(".", ",")} EUR`,
+          status: item.status === "executed" ? "Exécuté" : String(item.status ?? ""),
+          reference: String(item.reference ?? ""),
+        }));
+        setRecentTransfers(mapped);
+      } catch {
+        if (!ignore) setRecentTransfers([]);
+      } finally {
+        if (!ignore) setRecentTransfersLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
+  async function refreshRecentTransfers() {
+    try {
+      const res = await fetch("/api/transfers?limit=5");
+      const json = await res.json() as { success: boolean; transfers?: Array<Record<string, unknown>> };
+      if (!json.success || !json.transfers) {
+        setRecentTransfers([]);
+        return;
+      }
+      const mapped: RecentTransferItem[] = json.transfers.map((item) => ({
+        id: String(item.id ?? ""),
+        beneficiaryName: String(item.beneficiaryName ?? ""),
+        date: item.executionDate
+          ? new Date(`${String(item.executionDate)}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+          : "",
+        reason: item.reason ? String(item.reason) : null,
+        amount: `${Number(item.amount).toFixed(2).replace(".", ",")} EUR`,
+        status: item.status === "executed" ? "Exécuté" : String(item.status ?? ""),
+        reference: String(item.reference ?? ""),
+      }));
+      setRecentTransfers(mapped);
+    } catch {
+      setRecentTransfers([]);
+    }
+  }
 
   function selectTransferType(typeId: string) {
     resetEmailForNewTransfer();
@@ -421,6 +466,7 @@ export default function DesktopTransfers() {
       const nextEmailStatus = result.transfer.email_status ?? result.emailStatus ?? "idle";
       setEmailStatus(nextEmailStatus);
       setEmailError(nextEmailStatus === "failed" ? "L'avis de virement n'a pas pu etre envoye au beneficiaire." : null);
+      void refreshRecentTransfers();
     } catch (error) {
       console.error("[transfer] submit failed", error);
       setSubmitError(
@@ -586,9 +632,13 @@ export default function DesktopTransfers() {
               <Card className="p-5">
                 <h2 className="text-[17px] font-bold text-[#090927]">Virements recents</h2>
                 <div className="mt-4 divide-y divide-[#E5E7EB]">
-                  {recentTransfers.map((item) => (
+                  {recentTransfersLoading ? (
+                    <p className="py-3 text-[13px] text-[#6B7280]">Chargement...</p>
+                  ) : recentTransfers.length === 0 ? (
+                    <p className="py-3 text-[13px] text-[#6B7280]">Aucun virement recent.</p>
+                  ) : recentTransfers.map((item) => (
                     <button key={item.id} type="button" onClick={() => setShowDetail(item)} className="w-full py-3 text-left">
-                      <div className="flex items-start justify-between gap-3"><div><p className="text-[14px] font-bold text-[#090927]">{item.beneficiary}</p><p className="mt-1 text-[12px] text-[#6B7280]">{item.reason}</p></div><p className="text-[14px] font-bold text-[#050033]">- {formatAmount(item.amount)}</p></div>
+                      <div className="flex items-start justify-between gap-3"><div><p className="text-[14px] font-bold text-[#090927]">{item.beneficiaryName}</p><p className="mt-1 text-[12px] text-[#6B7280]">{item.reason}</p></div><p className="text-[14px] font-bold text-[#050033]">- {item.amount}</p></div>
                       <div className="mt-2 flex items-center justify-between text-[12px] text-[#6B7280]"><span>{item.date}</span><span className="flex items-center gap-1 text-[#7AA600]"><CheckCircle2 size={14} />{item.status}</span></div>
                     </button>
                   ))}
@@ -682,7 +732,7 @@ export default function DesktopTransfers() {
         <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-[#050033]/40 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-[#E5E7EB] bg-white p-5">
             <h2 className="text-[20px] font-bold text-[#090927]">Detail du virement</h2>
-            <div className="mt-4 space-y-2 text-[14px]"><p>Beneficiaire : {showDetail.beneficiary}</p><p>Date : {showDetail.date}</p><p>Montant : {formatAmount(showDetail.amount)}</p><p>Motif : {showDetail.reason}</p><p>Statut : {showDetail.status}</p><p>Reference : {showDetail.reference}</p></div>
+            <div className="mt-4 space-y-2 text-[14px]"><p>Beneficiaire : {showDetail.beneficiaryName}</p><p>Date : {showDetail.date}</p><p>Montant : {showDetail.amount}</p><p>Motif : {showDetail.reason}</p><p>Statut : {showDetail.status}</p><p>Reference : {showDetail.reference}</p></div>
             <div className="mt-5 flex justify-end"><button type="button" onClick={() => setShowDetail(null)} className="h-10 rounded-[10px] bg-[#050033] px-4 text-[14px] font-semibold text-white">Fermer</button></div>
           </div>
         </div>
