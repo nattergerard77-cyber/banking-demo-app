@@ -14,7 +14,6 @@ import { useNotifications } from "@/context/NotificationContext";
 import { useMessages } from "@/context/MessageContext";
 import { generateTransferPdf } from "@/utils/generateTransferPdf";
 import {
-  sendBeneficiaryTransferEmail,
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
 
@@ -335,36 +334,6 @@ export default function DesktopTransfers() {
     setSubmitError(null);
   }
 
-  function sendBeneficiaryNotice(reference: string, validationDate: Date) {
-    if (emailStatus === "sending" || emailStatus === "sent") return;
-
-    if (!selectedBeneficiary.email.trim()) {
-      setEmailStatus("failed");
-      setEmailError(t("transfers.emailNotice.missingEmail"));
-      return;
-    }
-
-    setEmailStatus("sending");
-    setEmailError(null);
-
-    void sendBeneficiaryTransferEmail({
-      beneficiaryEmail: selectedBeneficiary.email,
-      beneficiaryName: selectedBeneficiary.name,
-      beneficiaryBank: selectedBeneficiary.bank,
-      beneficiaryIban: selectedBeneficiary.iban,
-      amount: totalFormatted,
-      reference,
-      executionDate,
-      validationDate: validationDate.toLocaleDateString("fr-FR"),
-      validationTime: validationDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-      reason,
-      ordererName: "Frederico Di Mario",
-    }).then((result) => {
-      setEmailStatus(result.status);
-      setEmailError(result.error ?? null);
-    });
-  }
-
   function getTransferPayload() {
     return {
       accountCode: selectedDebitAccountId,
@@ -426,7 +395,7 @@ export default function DesktopTransfers() {
         body: JSON.stringify(payload),
       });
 
-      const result = await response.json() as { success: boolean; transfer?: { reference?: string }; error?: string; message?: string };
+      const result = await response.json() as { success: boolean; transfer?: { reference?: string; email_status?: EmailStatus }; emailStatus?: EmailStatus; error?: string; message?: string };
 
       if (!result.success || !result.transfer?.reference) {
         setSubmitError(getSubmitErrorMessage(result.error, result.message));
@@ -449,9 +418,16 @@ export default function DesktopTransfers() {
         validationDate: now.toLocaleDateString("fr-FR"),
         validationTime: now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
       });
-      sendBeneficiaryNotice(supabaseReference, now);
-    } catch {
-      setSubmitError("Une erreur réseau est survenue. Veuillez réessayer.");
+      const nextEmailStatus = result.transfer.email_status ?? result.emailStatus ?? "idle";
+      setEmailStatus(nextEmailStatus);
+      setEmailError(nextEmailStatus === "failed" ? "L'avis de virement n'a pas pu etre envoye au beneficiaire." : null);
+    } catch (error) {
+      console.error("[transfer] submit failed", error);
+      setSubmitError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Une erreur réseau est survenue. Veuillez réessayer."
+      );
     } finally {
       setIsSubmitting(false);
     }

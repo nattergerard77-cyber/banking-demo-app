@@ -4,6 +4,8 @@ export type BeneficiaryTransferEmailPayload = {
   ordererName: string;
   executionDate: string;
   reference: string;
+  beneficiaryIban?: string;
+  reason?: string;
 };
 
 function escapeHtml(value: string): string {
@@ -23,6 +25,10 @@ export function buildBeneficiaryTransferHtml(
   const ordererName = escapeHtml(payload.ordererName);
   const executionDate = escapeHtml(payload.executionDate);
   const reference = escapeHtml(payload.reference);
+  const beneficiaryIban = payload.beneficiaryIban
+    ? escapeHtml(payload.beneficiaryIban)
+    : "";
+  const reason = payload.reason ? escapeHtml(payload.reason) : "";
 
   return `<!doctype html>
 <html lang="fr">
@@ -92,14 +98,26 @@ export function buildBeneficiaryTransferHtml(
                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Date d’exécution prévue</td>
                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${executionDate}</td>
                   </tr>
-                  <tr>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Référence</td>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${reference}</td>
-                  </tr>
-                  <tr>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Statut</td>
-                    <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#0b1f3a;font-size:14px;font-weight:700;text-align:right;">Virement en cours de traitement</td>
-                  </tr>
+                   <tr>
+                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Référence</td>
+                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${reference}</td>
+                   </tr>
+                  ${beneficiaryIban ? `
+                    <tr>
+                      <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">IBAN bénéficiaire</td>
+                      <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${beneficiaryIban}</td>
+                    </tr>
+                  ` : ""}
+                  ${reason ? `
+                    <tr>
+                      <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Motif</td>
+                      <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#1f2937;font-size:14px;font-weight:600;text-align:right;">${reason}</td>
+                    </tr>
+                  ` : ""}
+                   <tr>
+                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#64748b;font-size:14px;">Statut</td>
+                     <td style="border-top:1px solid #e2e8f0;padding:13px 20px;color:#0b1f3a;font-size:14px;font-weight:700;text-align:right;">Virement en cours de traitement</td>
+                   </tr>
                 </table>
               </td>
             </tr>

@@ -1,3 +1,6 @@
+import { buildBeneficiaryTransferHtml } from "@/emails/beneficiaryTransferEmail";
+import { sendEmail } from "@/lib/smtpClient";
+import { generateBeneficiaryTransferPdfBase64 } from "@/utils/generateBeneficiaryTransferPdf";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -19,9 +22,10 @@ type TransferRequestBody = {
 
 type TransferSuccessResponse = {
   success: true;
-  transfer: unknown;
+  transfer: TransferRecord;
   transaction: unknown;
   updatedAccount: unknown;
+  emailStatus: EmailStatus;
 };
 
 type TransferErrorResponse = {
@@ -31,6 +35,27 @@ type TransferErrorResponse = {
 };
 
 type TransferResponse = TransferSuccessResponse | TransferErrorResponse;
+
+type EmailStatus = "idle" | "sending" | "sent" | "failed";
+
+type TransferRecord = {
+  id: string;
+  reference: string;
+  beneficiary_name: string;
+  beneficiary_iban: string;
+  beneficiary_bank: string;
+  beneficiary_email: string | null;
+  amount: number | string;
+  execution_date: string;
+  email_status: EmailStatus;
+  reason?: string | null;
+  [key: string]: unknown;
+};
+
+type AccountRecord = {
+  holder_name?: string | null;
+  [key: string]: unknown;
+};
 
 function jsonResponse(body: TransferResponse, status: number) {
   return Response.json(body, { status });
@@ -43,6 +68,112 @@ function getErrorMessage(error: unknown): string {
     if (typeof obj.message === "string" && obj.message) return obj.message;
   }
   return "Unknown transfer error";
+}
+
+function maskEmail(email: string): string {
+  const [localPart, domain] = email.split("@");
+
+  if (!localPart || !domain) return "invalid-email";
+
+  return `${localPart[0] ?? "*"}***@${domain}`;
+}
+
+function formatTransferAmount(amount: number | string): string {
+  const parsed = typeof amount === "number" ? amount : Number(amount);
+
+  if (!Number.isFinite(parsed)) return String(amount);
+
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(parsed);
+}
+
+async function sendTransferEmail(
+  transfer: TransferRecord,
+  ordererName: string,
+): Promise<EmailStatus> {
+  const beneficiaryEmail = transfer.beneficiary_email?.trim();
+
+  if (!beneficiaryEmail) {
+    return "idle";
+  }
+
+  const executionDateFormatted = new Date(`${transfer.execution_date}T00:00:00`).toLocaleDateString("fr-FR");
+  const now = new Date();
+
+  const htmlContent = buildBeneficiaryTransferHtml({
+    beneficiaryName: transfer.beneficiary_name,
+    amount: formatTransferAmount(transfer.amount),
+    ordererName,
+    executionDate: executionDateFormatted,
+    reference: transfer.reference,
+    beneficiaryIban: transfer.beneficiary_iban,
+    reason: typeof transfer.reason === "string" ? transfer.reason : undefined,
+  });
+
+  let pdfAttachment: { filename: string; content: Buffer; contentType: string } | null = null;
+
+  try {
+    const pdf = generateBeneficiaryTransferPdfBase64({
+      beneficiaryName: transfer.beneficiary_name,
+      beneficiaryBank: transfer.beneficiary_bank || "",
+      beneficiaryIban: transfer.beneficiary_iban,
+      ordererName,
+      amount: formatTransferAmount(transfer.amount),
+      reference: transfer.reference,
+      executionDate: executionDateFormatted,
+      validationDate: now.toLocaleDateString("fr-FR"),
+      validationTime: now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      reason: typeof transfer.reason === "string" ? transfer.reason : "",
+    });
+
+    pdfAttachment = {
+      filename: pdf.fileName,
+      content: Buffer.from(pdf.base64, "base64"),
+      contentType: "application/pdf",
+    };
+  } catch (pdfError) {
+    console.error("[EMAIL PDF ERROR] Failed to generate PDF attachment", {
+      reference: transfer.reference,
+      error: getErrorMessage(pdfError),
+    });
+    return "failed";
+  }
+
+  try {
+    const emailResult = await sendEmail({
+      to: beneficiaryEmail,
+      subject: "Avis de virement en votre faveur",
+      html: htmlContent,
+      attachments: pdfAttachment ? [pdfAttachment] : [],
+    });
+
+    if (emailResult.success) {
+      console.log("[EMAIL SENT] beneficiary transfer notice", {
+        reference: transfer.reference,
+        email: maskEmail(beneficiaryEmail),
+        messageId: emailResult.messageId,
+      });
+      return "sent";
+    }
+
+    console.error("[EMAIL FAILED]", {
+      reference: transfer.reference,
+      email: maskEmail(beneficiaryEmail),
+      error: emailResult.error,
+    });
+    return "failed";
+  } catch (error) {
+    console.error("[EMAIL ERROR] beneficiary transfer send failed", {
+      reference: transfer.reference,
+      email: maskEmail(beneficiaryEmail),
+      message: getErrorMessage(error),
+    });
+    return "failed";
+  }
 }
 
 function getTodayDateString(): string {
@@ -163,11 +294,50 @@ export async function POST(request: Request) {
       return jsonResponse({ success: false, error: "TRANSFER_RPC_FAILED", message: "Le virement a échoué" }, 500);
     }
 
+    const transfer = rpcData.transfer as TransferRecord;
+    const updatedAccount = (rpcData.updated_account ?? null) as AccountRecord | null;
+    const ordererName = updatedAccount?.holder_name?.trim() || "Frederico Di Mario";
+
+    void sendTransferEmail(transfer, ordererName)
+      .then(async (emailStatus) => {
+        if (emailStatus === "idle") return;
+
+        const { error: updateError } = await supabase
+          .from("transfers")
+          .update({ email_status: emailStatus })
+          .eq("id", transfer.id);
+
+        if (updateError) {
+          console.error("[DB ERROR] failed to update transfer email_status", {
+            reference: transfer.reference,
+            transferId: transfer.id,
+            emailStatus,
+            message: updateError.message,
+          });
+        } else {
+          console.log("[DB] transfer email_status updated", {
+            reference: transfer.reference,
+            transferId: transfer.id,
+            emailStatus,
+          });
+        }
+      })
+      .catch((bgError) => {
+        console.error("[BACKGROUND EMAIL] unexpected error", {
+          transferId: transfer.id,
+          message: getErrorMessage(bgError),
+        });
+      });
+
     return jsonResponse({
       success: true,
-      transfer: rpcData.transfer,
+      transfer: {
+        ...transfer,
+        email_status: "sending",
+      },
       transaction: rpcData.transaction,
       updatedAccount: rpcData.updated_account,
+      emailStatus: "sending",
     }, 201);
   } catch (error) {
     console.error("[api/transfers] unexpected error:", getErrorMessage(error));
