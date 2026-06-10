@@ -1,7 +1,0 @@
-(function(html) {
-    'use strict';
-    var cn = html.className;
-    if (/no-js/.test(cn)) {
-        html.className = cn.split('no-js').join(' js ');
-    }
-})(document.documentElement);
