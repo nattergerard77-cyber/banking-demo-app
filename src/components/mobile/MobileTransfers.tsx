@@ -19,6 +19,9 @@ import type { SupabaseAccount } from "@/types/supabase";
 
 type Beneficiary = { id: string; name: string; type: string; iban: string; bank: string; email: string; phone: string; initials: string };
 type RecentTransferItem = { id: string; beneficiaryName: string; date: string; reason: string | null; amount: string; status: string; reference: string };
+type BeneficiariesApiResponse =
+  | { success: true; beneficiaries: Array<{ id: string; code?: string | null; name: string; type?: string | null; iban: string; bank: string; email?: string | null; phone?: string | null; initials?: string | null; favorite: boolean; active: boolean }> }
+  | { success: false; error: string };
 
 type DebitAccountViewModel = {
   id: string;
@@ -88,12 +91,9 @@ export default function MobileTransfers() {
   const { t } = useLanguage();
   const { addTransferNotification } = useNotifications();
   const { addTransferMessage } = useMessages();
-  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([
-    { id: "luca", name: "Luca Romano", type: t("beneficiaries.particulier"), iban: "LU28 0019 1111 2222 3333", bank: "Banque Raiffeisen Luxembourg", email: "luca.romano@example.com", phone: "+39 345 812 4470", initials: "LR" },
-    { id: "sofia", name: "Sofia Bianchi", type: t("beneficiaries.particulier"), iban: "LU55 0019 4444 5555 6666", bank: "Banque de Luxembourg", email: "sofia.bianchi@example.com", phone: "+39 333 604 2198", initials: "SB" },
-    { id: "marco", name: "Marco Conti", type: t("beneficiaries.particulier"), iban: "LU82 0019 7777 8888 9999", bank: "Banque Internationale à Luxembourg", email: "marco.conti@example.com", phone: "+39 347 920 1186", initials: "MC" },
-  ]);
-  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState("luca");
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
+  const [beneficiariesLoading, setBeneficiariesLoading] = useState(true);
+  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState("");
   const [selectedDebitAccountId, setSelectedDebitAccountId] = useState("current");
   const [selectedTransferTypeId, setSelectedTransferTypeId] = useState("instant");
   const [amount, setAmount] = useState("120");
@@ -132,7 +132,7 @@ export default function MobileTransfers() {
   const [recentTransfers, setRecentTransfers] = useState<RecentTransferItem[]>([]);
   const [recentTransfersLoading, setRecentTransfersLoading] = useState(true);
 
-  const selectedBeneficiary = useMemo(() => beneficiaries.find((b) => b.id === selectedBeneficiaryId) ?? beneficiaries[0], [selectedBeneficiaryId, beneficiaries]);
+  const selectedBeneficiary = useMemo(() => beneficiaries.find((b) => b.id === selectedBeneficiaryId) ?? beneficiaries[0] ?? { id: "", name: "", type: "Particulier", iban: "", bank: "", email: "", phone: "", initials: "" }, [selectedBeneficiaryId, beneficiaries]);
   const selectedDebitAccount = useMemo(() => debitAccounts.find((a) => a.id === selectedDebitAccountId) ?? debitAccounts[0] ?? null, [selectedDebitAccountId, debitAccounts]);
   const selectedTransferType = useMemo(() => transferTypes.find((item) => item.id === selectedTransferTypeId) ?? transferTypes[0], [selectedTransferTypeId, transferTypes]);
   const totalFormatted = formatAmount(amount);
@@ -213,6 +213,67 @@ export default function MobileTransfers() {
     return () => { ignore = true; };
   }, []);
 
+  useEffect(() => {
+    let ignore = false;
+    void (async () => {
+      setBeneficiariesLoading(true);
+      try {
+        const res = await fetch("/api/beneficiaries");
+        const json = await res.json() as BeneficiariesApiResponse;
+        if (ignore) return;
+        if (!json.success || !json.beneficiaries) {
+          setBeneficiaries([]);
+          return;
+        }
+        const mapped: Beneficiary[] = json.beneficiaries.map((b) => ({
+          id: b.id,
+          name: b.name,
+          type: b.type ?? "Particulier",
+          iban: b.iban,
+          bank: b.bank,
+          email: b.email ?? "",
+          phone: b.phone ?? "",
+          initials: b.initials ?? (b.name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "NB"),
+        }));
+        setBeneficiaries(mapped);
+        if (mapped.length > 0 && !selectedBeneficiaryId) {
+          setSelectedBeneficiaryId(mapped[0].id);
+        }
+      } catch {
+        if (!ignore) setBeneficiaries([]);
+      } finally {
+        if (!ignore) setBeneficiariesLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function refreshBeneficiaries() {
+    try {
+      const res = await fetch("/api/beneficiaries", { cache: "no-store" });
+      const json = await res.json() as BeneficiariesApiResponse;
+      if (!json.success || !json.beneficiaries) {
+        return;
+      }
+      const mapped: Beneficiary[] = json.beneficiaries.map((b) => ({
+        id: b.id,
+        name: b.name,
+        type: b.type ?? "Particulier",
+        iban: b.iban,
+        bank: b.bank,
+        email: b.email ?? "",
+        phone: b.phone ?? "",
+        initials: b.initials ?? (b.name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "NB"),
+      }));
+      setBeneficiaries(mapped);
+      if (mapped.length > 0 && !mapped.some((b) => b.id === selectedBeneficiaryId)) {
+        setSelectedBeneficiaryId(mapped[0].id);
+      }
+    } catch {
+      // silent
+    }
+  }
+
   async function refreshRecentTransfers() {
     try {
       const res = await fetch("/api/transfers?limit=5");
@@ -261,7 +322,7 @@ export default function MobileTransfers() {
     setAmountError(""); setDateError(""); if (!temporaryReference) setTemporaryReference(generateTemporaryReference()); setShowRecap(true);
   }
 
-  function addBeneficiary() {
+  async function addBeneficiary() {
     const errors: Record<string, string> = {};
     if (!newBeneficiary.name.trim()) errors.name = t("transfers.errors.requiredName");
     if (!newBeneficiary.iban.trim()) errors.iban = t("transfers.errors.requiredIban");
@@ -271,15 +332,36 @@ export default function MobileTransfers() {
     if (!newBeneficiary.phone.trim()) errors.phone = t("transfers.errors.requiredPhone");
     setAddErrors(errors);
     if (Object.keys(errors).length) return;
-    const nextId = `benef-${Date.now()}`;
-    const initials = newBeneficiary.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "NB";
-    const added = { id: nextId, name: newBeneficiary.name.trim(), type: t("beneficiaries.particulier"), iban: newBeneficiary.iban.trim(), bank: newBeneficiary.bank.trim(), email: newBeneficiary.email.trim(), phone: newBeneficiary.phone.trim(), initials };
-    setBeneficiaries((current) => [added, ...current]);
-    setSelectedBeneficiaryId(nextId);
-    setShowAdd(false);
-    setNewBeneficiary({ name: "", iban: "", bank: "", email: "", phone: "" });
-    setAddErrors({});
-    setToast(t("transfers.beneficiaryAdded"));
+
+    try {
+      const res = await fetch("/api/beneficiaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newBeneficiary.name.trim(),
+          iban: newBeneficiary.iban.trim(),
+          bank: newBeneficiary.bank.trim(),
+          email: newBeneficiary.email.trim(),
+          phone: newBeneficiary.phone.trim(),
+        }),
+      });
+
+      const json = await res.json() as { success: boolean; beneficiary?: { id: string }; error?: string; message?: string };
+
+      if (!json.success || !json.beneficiary) {
+        setToast(json.message ?? "Erreur lors de l'ajout du bénéficiaire.");
+        return;
+      }
+
+      setShowAdd(false);
+      setNewBeneficiary({ name: "", iban: "", bank: "", email: "", phone: "" });
+      setAddErrors({});
+      setToast(t("transfers.beneficiaryAdded"));
+      setSelectedBeneficiaryId(json.beneficiary.id);
+      void refreshBeneficiaries();
+    } catch {
+      setToast("Erreur réseau lors de l'ajout du bénéficiaire.");
+    }
   }
 
   function resetEmailNotice() { setEmailStatus("idle"); setEmailError(null); }
@@ -422,7 +504,7 @@ export default function MobileTransfers() {
               <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("transfers.debitAccount")}</label><button type="button" onClick={() => setShowAccountPicker(true)} className="flex h-11 w-full items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[14px] font-semibold text-[#090927]"><Wallet size={18} />{accountsLoading ? "Chargement des comptes..." : selectedDebitAccount ? `${selectedDebitAccount.name} - ${selectedDebitAccount.balance}` : accountsError ? "Impossible de charger les comptes." : "Aucun compte disponible."}<ChevronRight size={16} className="ml-auto" /></button></div>
               <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("common.type")}</label><button type="button" onClick={() => setShowTypePicker(true)} className="flex h-11 w-full items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[14px] font-semibold text-[#090927]"><Clock3 size={16} />{selectedTransferType.label}</button></div>
               {selectedTransferTypeId === "scheduled" ? <div><label className="mb-2 block text-[13px] font-semibold text-[#090927]">{t("transfers.executionDate")}</label><input type="date" min={todayInputValue()} value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] outline-none" />{dateError ? <p className="mt-1 text-[12px] text-[#DC2626]">{dateError}</p> : null}</div> : null}
-              <div className="flex gap-2 overflow-auto">{beneficiaries.map((b) => <button key={b.id} type="button" onClick={() => { resetEmailForNewTransfer(); setSelectedBeneficiaryId(b.id); }} className={`rounded-[13px] border px-3 py-2 ${selectedBeneficiaryId === b.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB]"}`}>{b.name}</button>)}</div>
+              <div className="flex gap-2 overflow-auto">{beneficiariesLoading ? <p className="py-3 text-[13px] text-[#6B7280]">Chargement...</p> : beneficiaries.length === 0 ? <p className="py-3 text-[13px] text-[#6B7280]">Aucun bénéficiaire.</p> : beneficiaries.map((b) => <button key={b.id} type="button" onClick={() => { resetEmailForNewTransfer(); setSelectedBeneficiaryId(b.id); }} className={`rounded-[13px] border px-3 py-2 ${selectedBeneficiaryId === b.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB]"}`}>{b.name}</button>)}</div>
               <div><div className="flex h-11 items-center gap-3 rounded-[10px] border border-[#E5E7EB] px-3"><Euro size={16} /><input value={amount} onChange={(e) => setAmount(e.target.value)} className="flex-1 outline-none" /><span className="text-[12px] text-[#6B7280]">EUR</span></div>{amountError ? <p className="mt-1 text-[12px] text-[#DC2626]">{amountError}</p> : null}</div>
               <div className="flex h-11 items-center gap-3 rounded-[10px] border border-[#E5E7EB] px-3"><FileText size={16} /><input value={reason} onChange={(e) => setReason(e.target.value)} className="flex-1 outline-none" /></div>
               <div className="flex items-center justify-between rounded-[14px] bg-[#F6F7F9] p-3"><span className="font-semibold">{t("transfers.recurring")}</span><DemoSwitch checked={isRecurring} onChange={setIsRecurring} label={t("common.enable")} /></div>

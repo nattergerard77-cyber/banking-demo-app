@@ -60,11 +60,9 @@ type RecentTransferItem = {
   reference: string;
 };
 
-const initialBeneficiaries: Beneficiary[] = [
-  { id: "luca", name: "Luca Romano", type: "Particulier", iban: "LU28 0019 1111 2222 3333", bank: "Banque Raiffeisen Luxembourg", email: "luca.romano@example.com", phone: "+39 345 812 4470", initials: "LR" },
-  { id: "sofia", name: "Sofia Bianchi", type: "Particulier", iban: "LU55 0019 4444 5555 6666", bank: "Banque de Luxembourg", email: "sofia.bianchi@example.com", phone: "+39 333 604 2198", initials: "SB" },
-  { id: "marco", name: "Marco Conti", type: "Particulier", iban: "LU82 0019 7777 8888 9999", bank: "Banque Internationale à Luxembourg", email: "marco.conti@example.com", phone: "+39 347 920 1186", initials: "MC" },
-];
+type BeneficiariesApiResponse =
+  | { success: true; beneficiaries: Array<{ id: string; code?: string | null; name: string; type?: string | null; iban: string; bank: string; email?: string | null; phone?: string | null; initials?: string | null; favorite: boolean; active: boolean }> }
+  | { success: false; error: string };
 
 
 
@@ -164,8 +162,9 @@ export default function DesktopTransfers() {
   const { t } = useLanguage();
   const { addTransferNotification } = useNotifications();
   const { addTransferMessage } = useMessages();
-  const [beneficiaries, setBeneficiaries] = useState(initialBeneficiaries);
-  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState("luca");
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
+  const [beneficiariesLoading, setBeneficiariesLoading] = useState(true);
+  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState("");
   const [debitAccounts, setDebitAccounts] = useState<DebitAccountViewModel[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -198,7 +197,7 @@ export default function DesktopTransfers() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const selectedBeneficiary = useMemo(() => beneficiaries.find((item) => item.id === selectedBeneficiaryId) ?? beneficiaries[0], [beneficiaries, selectedBeneficiaryId]);
+  const selectedBeneficiary = useMemo(() => beneficiaries.find((item) => item.id === selectedBeneficiaryId) ?? beneficiaries[0] ?? { id: "", name: "", type: "Particulier", iban: "", bank: "", email: "", phone: "", initials: "" }, [beneficiaries, selectedBeneficiaryId]);
   const selectedDebitAccount = useMemo(() => debitAccounts.find((account) => account.id === selectedDebitAccountId) ?? debitAccounts[0] ?? null, [debitAccounts, selectedDebitAccountId]);
   const selectedTransferType = useMemo(() => transferTypes.find((type) => type.id === selectedTransferTypeId) ?? transferTypes[0], [selectedTransferTypeId]);
   const totalFormatted = formatAmount(amount || "0");
@@ -279,6 +278,67 @@ export default function DesktopTransfers() {
     return () => { ignore = true; };
   }, []);
 
+  useEffect(() => {
+    let ignore = false;
+    void (async () => {
+      setBeneficiariesLoading(true);
+      try {
+        const res = await fetch("/api/beneficiaries");
+        const json = await res.json() as BeneficiariesApiResponse;
+        if (ignore) return;
+        if (!json.success || !json.beneficiaries) {
+          setBeneficiaries([]);
+          return;
+        }
+        const mapped: Beneficiary[] = json.beneficiaries.map((b) => ({
+          id: b.id,
+          name: b.name,
+          type: b.type ?? "Particulier",
+          iban: b.iban,
+          bank: b.bank,
+          email: b.email ?? "",
+          phone: b.phone ?? "",
+          initials: b.initials ?? (b.name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "NB"),
+        }));
+        setBeneficiaries(mapped);
+        if (mapped.length > 0 && !selectedBeneficiaryId) {
+          setSelectedBeneficiaryId(mapped[0].id);
+        }
+      } catch {
+        if (!ignore) setBeneficiaries([]);
+      } finally {
+        if (!ignore) setBeneficiariesLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function refreshBeneficiaries() {
+    try {
+      const res = await fetch("/api/beneficiaries", { cache: "no-store" });
+      const json = await res.json() as BeneficiariesApiResponse;
+      if (!json.success || !json.beneficiaries) {
+        return;
+      }
+      const mapped: Beneficiary[] = json.beneficiaries.map((b) => ({
+        id: b.id,
+        name: b.name,
+        type: b.type ?? "Particulier",
+        iban: b.iban,
+        bank: b.bank,
+        email: b.email ?? "",
+        phone: b.phone ?? "",
+        initials: b.initials ?? (b.name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "NB"),
+      }));
+      setBeneficiaries(mapped);
+      if (mapped.length > 0 && !mapped.some((b) => b.id === selectedBeneficiaryId)) {
+        setSelectedBeneficiaryId(mapped[0].id);
+      }
+    } catch {
+      // silent
+    }
+  }
+
   async function refreshRecentTransfers() {
     try {
       const res = await fetch("/api/transfers?limit=5");
@@ -346,7 +406,7 @@ export default function DesktopTransfers() {
     setShowRecap(true);
   }
 
-  function addBeneficiary() {
+  async function addBeneficiary() {
     const errors: Record<string, string> = {};
     if (!newBeneficiary.name.trim()) errors.name = "Nom obligatoire";
     if (!newBeneficiary.iban.trim()) errors.iban = "IBAN obligatoire";
@@ -357,15 +417,35 @@ export default function DesktopTransfers() {
     setAddErrors(errors);
     if (Object.keys(errors).length) return;
 
-    const nextId = `benef-${Date.now()}`;
-    const initials = newBeneficiary.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "NB";
-    const added: Beneficiary = { id: nextId, name: newBeneficiary.name.trim(), type: "Particulier", iban: newBeneficiary.iban.trim(), bank: newBeneficiary.bank.trim(), email: newBeneficiary.email.trim(), phone: newBeneficiary.phone.trim(), initials };
-    setBeneficiaries((current) => [added, ...current]);
-    setSelectedBeneficiaryId(nextId);
-    setShowAdd(false);
-    setNewBeneficiary({ name: "", iban: "", bank: "", email: "", phone: "" });
-    setAddErrors({});
-    setToast("Beneficiaire ajoute.");
+    try {
+      const res = await fetch("/api/beneficiaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newBeneficiary.name.trim(),
+          iban: newBeneficiary.iban.trim(),
+          bank: newBeneficiary.bank.trim(),
+          email: newBeneficiary.email.trim(),
+          phone: newBeneficiary.phone.trim(),
+        }),
+      });
+
+      const json = await res.json() as { success: boolean; beneficiary?: { id: string }; error?: string; message?: string };
+
+      if (!json.success || !json.beneficiary) {
+        setToast(json.message ?? "Erreur lors de l'ajout du bénéficiaire.");
+        return;
+      }
+
+      setShowAdd(false);
+      setNewBeneficiary({ name: "", iban: "", bank: "", email: "", phone: "" });
+      setAddErrors({});
+      setToast("Beneficiaire ajoute.");
+      setSelectedBeneficiaryId(json.beneficiary.id);
+      void refreshBeneficiaries();
+    } catch {
+      setToast("Erreur réseau lors de l'ajout du bénéficiaire.");
+    }
   }
 
   function resetEmailNotice() {
@@ -568,7 +648,11 @@ export default function DesktopTransfers() {
               <div className="mt-5">
                 <p className="mb-2 text-[13px] font-semibold text-[#090927]">Beneficiaires recents</p>
                 <div className="flex gap-3 overflow-x-auto pb-1">
-                  {beneficiaries.map((item) => (
+                  {beneficiariesLoading ? (
+                    <p className="py-3 text-[13px] text-[#6B7280]">Chargement des bénéficiaires...</p>
+                  ) : beneficiaries.length === 0 ? (
+                    <p className="py-3 text-[13px] text-[#6B7280]">Aucun bénéficiaire.</p>
+                  ) : beneficiaries.map((item) => (
                     <button key={item.id} type="button" aria-pressed={selectedBeneficiaryId === item.id} onClick={() => { resetEmailForNewTransfer(); setSelectedBeneficiaryId(item.id); }} className={`flex min-w-[185px] items-center gap-3 rounded-[14px] border px-3 py-3 text-left ${selectedBeneficiaryId === item.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB] bg-white"}`}>
                       <span className={`flex h-10 w-10 items-center justify-center rounded-full text-[13px] font-bold ${selectedBeneficiaryId === item.id ? "bg-[#050033] text-white" : "bg-[#F3F4F6] text-[#050033]"}`}>{item.initials}</span>
                       <span className="min-w-0"><span className="block truncate text-[14px] font-bold text-[#090927]">{item.name}</span><span className="mt-1 block truncate text-[12px] text-[#6B7280]">{item.iban}</span></span>
