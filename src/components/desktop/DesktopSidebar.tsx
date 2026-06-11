@@ -79,7 +79,7 @@ export default function DesktopSidebar() {
         <div className="bg-gray-50 rounded-xl p-4 border border-border text-sm">
           <p className="font-bold text-navy mb-1">{t("sidebar.help.title")}</p>
           <p className="text-text-secondary mb-3 text-xs">{t("sidebar.help.subtitle")}</p>
-          <p className="font-bold text-navy">+352 2450 1234</p>
+          <p className="font-bold text-navy">+352 2450 123619</p>
         </div>
       </div>
     </div>

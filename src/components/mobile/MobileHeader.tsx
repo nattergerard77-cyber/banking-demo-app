@@ -1,5 +1,6 @@
 "use client";
 
+import Image from 'next/image';
 import AppLogo from '../shared/AppLogo';
 import { Bell, ChevronDown, Check, User, ShieldCheck, FileText, Settings, LogOut, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
@@ -90,10 +91,13 @@ export default function MobileHeader() {
           className="flex items-center gap-1.5 rounded-full px-2 py-1 text-[12px] font-bold text-[#07002F] hover:bg-gray-100 transition-colors"
         >
           <span>{currentLanguage.code}</span>
-          <img
+          <Image
             src={currentLanguage.flag}
             alt={currentLanguage.code}
-            className="h-4 w-6 rounded-[3px] object-cover"
+            width={24}
+            height={16}
+            className="rounded-[3px] object-cover"
+            unoptimized
           />
           <ChevronDown size={14} />
         </button>
@@ -244,7 +248,7 @@ export default function MobileHeader() {
                   className={`flex w-full items-center justify-between rounded-[14px] border p-4 text-left transition-colors ${isSelected ? "border-[#9ACD00] bg-[#EEF7D8]" : "border-[#E5E7EB] bg-white hover:bg-gray-50"}`}
                 >
                   <div className="flex items-center gap-3">
-                    <img src={lang.flag} alt={lang.code} className="h-6 w-8 rounded object-cover shadow-sm" />
+                    <Image src={lang.flag} alt={lang.code} width={32} height={24} className="rounded object-cover shadow-sm" unoptimized />
                     <div>
                       <span className="block text-[14px] font-bold text-[#090927]">{lang.label}</span>
                       <span className="mt-1 block text-[12px] text-[#6B7280]">

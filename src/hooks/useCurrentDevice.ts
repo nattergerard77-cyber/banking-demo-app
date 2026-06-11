@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface DeviceInfo {
   os: string;
@@ -49,6 +49,10 @@ function detectDevice(): DeviceInfo | null {
 }
 
 export function useCurrentDevice(): DeviceInfo | null {
-  const [device] = useState<DeviceInfo | null>(detectDevice);
+  const [device, setDevice] = useState<DeviceInfo | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDevice(detectDevice());
+  }, []);
   return device;
 }

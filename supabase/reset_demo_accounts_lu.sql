@@ -24,7 +24,10 @@ set
     when 'savings' then 185680.00
     when 'joint'   then 30000.00
     else available_balance
-  end
+  end,
+  is_blocked = false,
+  blocked_reason = null,
+  blocked_at = null
 where code in ('current', 'savings', 'joint');
 
 -- 2. Remet a jour les beneficiaires : IBAN LU, banque LU

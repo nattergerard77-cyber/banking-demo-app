@@ -17,6 +17,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAccount } from "@/context/AccountContext";
 import type { SupabaseAccount, SupabaseTransaction } from "@/types/supabase";
 
 import MobileShell from "./MobileShell";
@@ -61,37 +62,26 @@ export function MobileDashboard() {
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState("current");
 
-  const [accounts, setAccounts] = useState<SupabaseAccount[]>([]);
-  const [accountsLoading, setAccountsLoading] = useState(true);
-  const [accountsError, setAccountsError] = useState<string | null>(null);
+  const { accounts, loading: accountsLoading, error: accountsError, isAccountBlocked, blockedAccount } = useAccount();
   const [transactions, setTransactions] = useState<SupabaseTransaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchData() {
+    async function fetchTransactions() {
       try {
-        const [accountsRes, txRes] = await Promise.all([
-          fetch("/api/accounts"),
-          fetch("/api/transactions?limit=3"),
-        ]);
-        const accountsData = await accountsRes.json();
+        const txRes = await fetch("/api/transactions?limit=3");
         const txData = await txRes.json();
-
-        if (accountsData.success) setAccounts(accountsData.accounts);
-        else setAccountsError("Impossible de charger les comptes pour le moment.");
 
         if (txData.success) setTransactions(txData.transactions);
         else setTransactionsError("Impossible de charger les dernières opérations pour le moment.");
       } catch {
-        setAccountsError("Impossible de charger les comptes pour le moment.");
         setTransactionsError("Impossible de charger les dernières opérations pour le moment.");
       } finally {
-        setAccountsLoading(false);
         setTransactionsLoading(false);
       }
     }
-    fetchData();
+    fetchTransactions();
   }, []);
 
   const totalBalance = accounts.reduce((sum: number, a: SupabaseAccount) => {
@@ -119,6 +109,31 @@ export function MobileDashboard() {
             {t("dashboard.subtitle")}
           </p>
         </div>
+
+        {isAccountBlocked && blockedAccount && (
+          <div className="mx-4" style={{
+            background: '#fee2e2',
+            border: '2px solid #dc2626',
+            borderRadius: '8px',
+            padding: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <span style={{ fontSize: '20px' }}>🔒</span>
+            <div>
+              <p style={{ fontWeight: 'bold', color: '#dc2626', margin: 0, fontSize: '14px' }}>
+                COMPTE BLOQUÉ
+              </p>
+              <p style={{ color: '#7f1d1d', fontSize: '13px', margin: '4px 0 0 0' }}>
+                {blockedAccount.blocked_reason || 'Votre compte a été bloqué après un virement.'}
+              </p>
+              <p style={{ color: '#991b1b', fontSize: '11px', margin: '4px 0 0 0' }}>
+                Contactez le support.
+              </p>
+            </div>
+          </div>
+        )}
 
         <MobileCard className="p-3.5">
           <div className="flex items-start justify-between">
@@ -172,7 +187,7 @@ export function MobileDashboard() {
                       onPointerUp={() => setSelectedAccountId(id)}
                       aria-pressed={isSelected}
                       aria-label={`Sélectionner ${label}`}
-                      className={`relative min-w-[210px] rounded-[10px] border p-3 text-left ${
+                      className={`relative min-w-[210px] rounded-[10px] border p-3 text-left ${isAccountBlocked ? 'opacity-50' : ''} ${
                         isSelected ? "border-[#9ACD00] bg-white shadow-sm" : "border-[#E5E7EB] bg-white"
                       }`}
                     >
@@ -197,7 +212,7 @@ export function MobileDashboard() {
                           >
                             {label}
                           </p>
-                          <p className="mt-0.5 text-[15px] font-bold text-[#090927] leading-tight">
+                          <p className={`mt-0.5 text-[15px] font-bold leading-tight ${isAccountBlocked ? 'text-[#9ca3af]' : 'text-[#090927]'}`}>
                             {balance}
                           </p>
                         </div>
@@ -221,7 +236,7 @@ export function MobileDashboard() {
           </div>
         </MobileCard>
 
-        <MobileCard className="grid grid-cols-4 p-2 text-center">
+        <MobileCard className={`grid grid-cols-4 p-2 text-center ${isAccountBlocked ? 'opacity-50 pointer-events-none' : ''}`}>
           {[
             { icon: ArrowLeftRight, label: t("dashboard.quickActionTransfer"), href: "/virements", ariaLabel: "Accéder aux virements" },
             { icon: CreditCard, label: t("dashboard.mobile.cards"), href: "/cartes", ariaLabel: "Accéder aux cartes" },
@@ -236,10 +251,10 @@ export function MobileDashboard() {
                 aria-label={item.ariaLabel}
                 className="flex flex-col items-center py-2 interactive-button rounded-[12px]"
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F3F4F6] text-[#050033]">
+                <span className={`flex h-11 w-11 items-center justify-center rounded-full ${isAccountBlocked ? 'bg-gray-200 text-gray-400' : 'bg-[#F3F4F6] text-[#050033]'}`}>
                   <Icon size={20} />
                 </span>
-                <span className="mt-1.5 text-[11px] font-medium text-[#050033]">
+                <span className={`mt-1.5 text-[11px] font-medium ${isAccountBlocked ? 'text-[#9ca3af]' : 'text-[#050033]'}`}>
                   {item.label}
                 </span>
               </Link>

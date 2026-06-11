@@ -19,7 +19,7 @@ export async function GET() {
     const supabase = createServerSupabaseClient();
     const { data, error } = await supabase
       .from("accounts")
-      .select("id, code, name, type, iban, currency, balance, available_balance, status, holder_name, holder_email, display_order, created_at, updated_at")
+      .select("id, code, name, type, iban, currency, balance, available_balance, status, holder_name, holder_email, display_order, is_blocked, blocked_reason, blocked_at, created_at, updated_at")
       .eq("status", "active")
       .order("display_order", { ascending: true });
 

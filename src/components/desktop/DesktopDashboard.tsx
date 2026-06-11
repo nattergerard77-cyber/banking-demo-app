@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAccount } from "@/context/AccountContext";
 import type { SupabaseAccount, SupabaseTransaction } from "@/types/supabase";
 import ClientOnlyChart from "../shared/ClientOnlyChart";
 import DemoModal from "../shared/DemoModal";
@@ -86,37 +87,26 @@ export function DesktopDashboard() {
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
   const [toast, setToast] = useState("");
 
-  const [accounts, setAccounts] = useState<SupabaseAccount[]>([]);
-  const [accountsLoading, setAccountsLoading] = useState(true);
-  const [accountsError, setAccountsError] = useState<string | null>(null);
+  const { accounts, loading: accountsLoading, error: accountsError, isAccountBlocked, blockedAccount } = useAccount();
   const [transactions, setTransactions] = useState<SupabaseTransaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchData() {
+    async function fetchTransactions() {
       try {
-        const [accountsRes, txRes] = await Promise.all([
-          fetch("/api/accounts"),
-          fetch("/api/transactions?limit=6"),
-        ]);
-        const accountsData = await accountsRes.json();
+        const txRes = await fetch("/api/transactions?limit=6");
         const txData = await txRes.json();
-
-        if (accountsData.success) setAccounts(accountsData.accounts);
-        else setAccountsError("Impossible de charger les comptes pour le moment.");
 
         if (txData.success) setTransactions(txData.transactions);
         else setTransactionsError("Impossible de charger les dernières opérations pour le moment.");
       } catch {
-        setAccountsError("Impossible de charger les comptes pour le moment.");
         setTransactionsError("Impossible de charger les dernières opérations pour le moment.");
       } finally {
-        setAccountsLoading(false);
         setTransactionsLoading(false);
       }
     }
-    fetchData();
+    fetchTransactions();
   }, []);
 
   const totalBalance = accounts.reduce((sum: number, a: SupabaseAccount) => {
@@ -127,6 +117,10 @@ export function DesktopDashboard() {
   const savingsAccount = accounts.find((a: SupabaseAccount) => a.code === "savings");
 
   const goQuickAction = (label: string) => {
+    if (isAccountBlocked) {
+      setToast("Action impossible : compte bloqué.");
+      return;
+    }
     if (label === t("dashboard.quickActionTransfer")) router.push("/virements");
     else if (label === t("dashboard.quickActionAddBeneficiary")) router.push("/beneficiaires");
     else setToast("Document préparé pour consultation.");
@@ -156,6 +150,31 @@ export function DesktopDashboard() {
             {t("dashboard.lastLogin")} : {lastLogin || "Chargement..."}
           </p>
         </div>
+
+        {isAccountBlocked && blockedAccount && (
+          <div style={{
+            background: '#fee2e2',
+            border: '2px solid #dc2626',
+            borderRadius: '8px',
+            padding: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            <span style={{ fontSize: '24px' }}>🔒</span>
+            <div>
+              <p style={{ fontWeight: 'bold', color: '#dc2626', margin: 0 }}>
+                COMPTE BLOQUÉ
+              </p>
+              <p style={{ color: '#7f1d1d', fontSize: '14px', margin: '4px 0 0 0' }}>
+                {blockedAccount.blocked_reason || 'Votre compte a été bloqué après un virement.'}
+              </p>
+              <p style={{ color: '#991b1b', fontSize: '12px', margin: '4px 0 0 0' }}>
+                Contactez le support pour plus d&apos;informations.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-12 gap-4">
           <Card className="relative col-span-5 overflow-hidden p-5 flex flex-col justify-between interactive-card">
@@ -202,7 +221,7 @@ export function DesktopDashboard() {
           ) : (
             <>
               {currentAccount && (
-              <Card className="col-span-3 p-5 flex flex-col justify-between interactive-card">
+              <Card className={`col-span-3 p-5 flex flex-col justify-between interactive-card ${isAccountBlocked ? 'opacity-60 pointer-events-none' : ''}`}>
                 <div>
                   <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-[#050033] text-white">
                     <Wallet size={18} />
@@ -218,13 +237,13 @@ export function DesktopDashboard() {
 
                 <div className="mt-3 flex items-end justify-between">
                   <div>
-                    <p className="text-[22px] font-bold text-[#050033]">
+                    <p className={`text-[22px] font-bold ${isAccountBlocked ? 'text-[#9ca3af]' : 'text-[#050033]'}`}>
                       {money(Number(currentAccount.available_balance ?? currentAccount.balance))}
                     </p>
                     <p className="mt-0.5 text-[12px] text-[#6B7280]">{t("dashboard.available")}</p>
                   </div>
 
-                  <Link href="/comptes" aria-label={`Voir ${currentAccount.name}`} className="mb-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#050033] text-white interactive-link">
+                  <Link href="/comptes" aria-label={`Voir ${currentAccount.name}`} className={`mb-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${isAccountBlocked ? 'bg-gray-300 pointer-events-none' : 'bg-[#050033]'} text-white interactive-link`}>
                     <ChevronRight size={15} />
                   </Link>
                 </div>
@@ -232,7 +251,7 @@ export function DesktopDashboard() {
               )}
 
               {savingsAccount && (
-              <Card className="col-span-4 p-5 flex flex-col justify-between interactive-card">
+              <Card className={`col-span-4 p-5 flex flex-col justify-between interactive-card ${isAccountBlocked ? 'opacity-60 pointer-events-none' : ''}`}>
                 <div>
                   <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-[#050033] text-white">
                     <PiggyBank size={18} />
@@ -248,13 +267,13 @@ export function DesktopDashboard() {
 
                 <div className="mt-3 flex items-end justify-between">
                   <div>
-                    <p className="text-[22px] font-bold text-[#050033]">
+                    <p className={`text-[22px] font-bold ${isAccountBlocked ? 'text-[#9ca3af]' : 'text-[#050033]'}`}>
                       {money(Number(savingsAccount.available_balance ?? savingsAccount.balance))}
                     </p>
                     <p className="mt-0.5 text-[12px] text-[#6B7280]">{t("dashboard.available")}</p>
                   </div>
 
-                  <Link href="/comptes" aria-label={`Voir ${savingsAccount.name}`} className="mb-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#050033] text-white interactive-link">
+                  <Link href="/comptes" aria-label={`Voir ${savingsAccount.name}`} className={`mb-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${isAccountBlocked ? 'bg-gray-300 pointer-events-none' : 'bg-[#050033]'} text-white interactive-link`}>
                     <ChevronRight size={15} />
                   </Link>
                 </div>
@@ -335,18 +354,19 @@ export function DesktopDashboard() {
                   <button
                     key={action.label}
                     type="button"
+                    disabled={isAccountBlocked}
                     onClick={() => goQuickAction(action.label)}
-                    className="flex h-[46px] w-full items-center justify-between rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-left interactive-button"
+                    className={`flex h-[46px] w-full items-center justify-between rounded-[8px] border px-3 text-left interactive-button ${isAccountBlocked ? 'border-[#D1D5DB] bg-gray-50 cursor-not-allowed' : 'border-[#E5E7EB] bg-white'}`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#050033] text-white">
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-[8px] text-white ${isAccountBlocked ? 'bg-gray-300' : 'bg-[#050033]'}`}>
                         <Icon size={16} />
                       </div>
-                      <span className="text-[13px] font-semibold text-[#090927]">
+                      <span className={`text-[13px] font-semibold ${isAccountBlocked ? 'text-[#9ca3af]' : 'text-[#090927]'}`}>
                         {action.label}
                       </span>
                     </div>
-                    <ChevronRight size={16} className="arrow-icon text-[#050033]" />
+                    <ChevronRight size={16} className={`arrow-icon ${isAccountBlocked ? 'text-[#D1D5DB]' : 'text-[#050033]'}`} />
                   </button>
                 );
               })}

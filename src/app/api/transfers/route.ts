@@ -1,5 +1,5 @@
 import { buildBeneficiaryTransferHtml, buildBeneficiaryTransferText } from "@/emails/beneficiaryTransferEmail";
-import { sendEmail } from "@/lib/smtpClient";
+import { sendEmail } from "@/lib/emailClient";
 import { generateBeneficiaryTransferPdfBase64 } from "@/utils/generateBeneficiaryTransferPdf";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -171,18 +171,20 @@ async function sendTransferEmail(
     });
 
     if (emailResult.success) {
-      console.log("[EMAIL SENT] beneficiary transfer notice", {
+      console.log("[EMAIL DELIVERY] sent", {
         reference: transfer.reference,
-        email: maskEmail(beneficiaryEmail),
+        to: maskEmail(beneficiaryEmail),
         messageId: emailResult.messageId,
+        timestamp: new Date().toISOString(),
       });
       return "sent";
     }
 
-    console.error("[EMAIL FAILED]", {
+    console.error("[EMAIL DELIVERY] failed", {
       reference: transfer.reference,
-      email: maskEmail(beneficiaryEmail),
+      to: maskEmail(beneficiaryEmail),
       error: emailResult.error,
+      timestamp: new Date().toISOString(),
     });
     return "failed";
   } catch (error) {
@@ -329,6 +331,16 @@ export async function POST(request: Request) {
 
     const supabase = createServerSupabaseClient();
 
+    const { data: blockingCheck } = await supabase
+      .from("accounts")
+      .select("is_blocked")
+      .or(accountId ? `id.eq.${accountId}` : `code.eq.${accountCode}`)
+      .single();
+
+    if (blockingCheck?.is_blocked) {
+      return jsonResponse({ success: false, error: "ACCOUNT_BLOCKED", message: "Ce compte est bloqué et ne peut pas effectuer de virements." }, 403);
+    }
+
     const { data, error } = await supabase.rpc("create_transfer_and_debit_account", {
       p_account_code: accountCode,
       p_account_id: accountId,
@@ -389,6 +401,12 @@ export async function POST(request: Request) {
           message: getErrorMessage(bgError),
         });
       });
+
+    console.log("[ACCOUNT BLOCKED]", {
+      accountId: (updatedAccount as Record<string, unknown>)?.id,
+      reference: transfer.reference,
+      timestamp: new Date().toISOString(),
+    });
 
     return jsonResponse({
       success: true,

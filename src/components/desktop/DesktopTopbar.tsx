@@ -1,5 +1,6 @@
 "use client";
 
+import Image from 'next/image';
 import { Search, ChevronDown, Bell, Check, User, ShieldCheck, FileText, Settings, LogOut, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -96,7 +97,7 @@ export default function DesktopTopbar() {
             className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-[#07002F] transition hover:bg-[#F3F4F6] dark:text-white dark:hover:bg-white/10"
           >
             <span className="font-semibold">{currentLanguage.code}</span>
-            <img src={currentLanguage.flag} alt={currentLanguage.code} className="w-5 h-5 rounded-sm object-cover" />
+            <Image src={currentLanguage.flag} alt={currentLanguage.code} width={20} height={20} className="w-5 h-5 rounded-sm object-cover" unoptimized />
             <ChevronDown className="h-4 w-4 text-slate-500" />
           </button>
 
@@ -124,7 +125,7 @@ export default function DesktopTopbar() {
                     >
                       <span className="flex items-center gap-3">
                         <span className="min-w-[28px] text-sm font-bold">{option.code}</span>
-                        <img src={option.flag} alt={option.code} className="w-5 h-5 rounded-sm object-cover" />
+                        <Image src={option.flag} alt={option.code} width={20} height={20} className="w-5 h-5 rounded-sm object-cover" unoptimized />
                         <span className="font-semibold">{option.label}</span>
                       </span>
 

@@ -11,6 +11,9 @@ export type SupabaseAccount = {
   holder_name?: string;
   holder_email?: string | null;
   display_order?: number;
+  is_blocked?: boolean;
+  blocked_reason?: string | null;
+  blocked_at?: string | null;
   created_at?: string;
   updated_at?: string;
 };

@@ -70,7 +70,7 @@ const en = {
     connectionModeTitle: "Secure validation",
     connectionModeSubtitle: "Confirm access from your trusted device",
     helpTextLine1: "If you experience an issue with secure access, please contact our helpdesk.",
-    helpTextLine2: "For any question related to your agreement, contact Customer Care at +352 2450 1234.",
+    helpTextLine2: "For any question related to your agreement, contact Customer Care at +352 2450 123619.",
     firstConnectionText: "Already a client and logging in for the first time?",
     firstConnectionButton: "First login",
     onlineHelpText: "Lost or stolen card? A question about your client area?",

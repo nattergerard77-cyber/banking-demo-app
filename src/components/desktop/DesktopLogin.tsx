@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Check, ChevronDown, User, Headphones, Smartphone } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useNotifications } from '@/context/NotificationContext';
@@ -135,10 +136,13 @@ export default function DesktopLogin() {
               aria-haspopup="true"
               aria-expanded={isLanguageMenuOpen}
             >
-              <img
+              <Image
                 src={currentLanguage.flag}
                 alt={currentLanguage.code}
-                style={{ height: '16px', width: '24px', borderRadius: '3px', objectFit: 'cover' }}
+                width={24}
+                height={16}
+                style={{ borderRadius: '3px', objectFit: 'cover' }}
+                unoptimized
               />
               <span>{currentLanguage.code}</span>
               <ChevronDown size={16} style={{ color: '#050033' }} aria-hidden="true" />
@@ -191,7 +195,7 @@ export default function DesktopLogin() {
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <span style={{ minWidth: '28px', fontSize: '14px', fontWeight: 700 }}>{option.code}</span>
-                        <img src={option.flag} alt={option.code} style={{ height: '20px', width: '20px', borderRadius: '2px', objectFit: 'cover' }} />
+                        <Image src={option.flag} alt={option.code} width={20} height={20} style={{ borderRadius: '2px', objectFit: 'cover' }} unoptimized />
                         <span style={{ fontWeight: 600 }}>{option.label}</span>
                       </span>
                       {isActive ? <Check style={{ height: '16px', width: '16px', color: '#7FB000' }} /> : null}
@@ -521,7 +525,7 @@ export default function DesktopLogin() {
             <p style={{ margin: '4px 0 0 0' }}>
               {(() => {
                 const line2 = t('login.helpTextLine2');
-                const phone = "+352 2450 1234";
+                const phone = "+352 2450 123619";
                 if (line2.includes(phone)) {
                   const parts = line2.split(phone);
                   return (

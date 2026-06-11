@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { ChevronDown, User, Headphones, Smartphone, Check } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import AppLogo from '../shared/AppLogo';
@@ -133,10 +134,13 @@ export default function MobileLogin() {
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(5, 0, 51, 0.04)'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}
           >
-            <img
+            <Image
               src={currentLanguage.flag}
               alt={currentLanguage.code}
-              style={{ height: '14px', width: '20px', borderRadius: '2px', objectFit: 'cover' }}
+              width={20}
+              height={14}
+              style={{ borderRadius: '2px', objectFit: 'cover' }}
+              unoptimized
             />
             <span>{currentLanguage.code}</span>
             <ChevronDown size={14} style={{ color: '#050033' }} />
@@ -459,7 +463,7 @@ export default function MobileLogin() {
             <p style={{ margin: '4px 0 0 0' }}>
               {(() => {
                 const line2 = t('login.helpTextLine2');
-                const phone = "+352 2450 1234";
+                const phone = "+352 2450 123619";
                 if (line2.includes(phone)) {
                   const parts = line2.split(phone);
                   return (
@@ -850,7 +854,7 @@ export default function MobileLogin() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <img src={lang.flag} alt={lang.code} style={{ height: '24px', width: '32px', borderRadius: '4px', objectFit: 'cover', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} />
+                      <Image src={lang.flag} alt={lang.code} width={32} height={24} style={{ borderRadius: '4px', objectFit: 'cover', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} unoptimized />
                       <div>
                         <span style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', color: '#090927' }}>{lang.label}</span>
                         <span style={{ display: 'block', fontSize: '12px', color: '#6B7280', marginTop: '4px' }}>

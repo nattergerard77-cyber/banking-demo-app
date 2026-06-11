@@ -24,6 +24,7 @@ import DemoModal from "../shared/DemoModal";
 import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
 import MobileShell from "./MobileShell";
+import { useLogout } from "@/hooks/useLogout";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCurrentDevice } from "@/hooks/useCurrentDevice";
 
@@ -82,6 +83,7 @@ export function MobileSettings() {
   }, []);
 
   const currentDevice = useCurrentDevice();
+  const logout = useLogout();
   const isEn = selectedLanguage === "en";
   const securityTitleMap: Record<string, string> = {
     "Authentification renforcée": "Enhanced authentication",
@@ -445,7 +447,7 @@ export function MobileSettings() {
         onClose={() => setModal(null)}
         onConfirm={() => {
           setModal(null);
-          setToast("Session fermée.");
+          logout();
         }}
       />
       <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />

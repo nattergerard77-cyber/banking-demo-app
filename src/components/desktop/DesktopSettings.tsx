@@ -26,6 +26,7 @@ import DemoModal from "../shared/DemoModal";
 import DemoSwitch from "../shared/DemoSwitch";
 import DemoToast from "../shared/DemoToast";
 import DesktopShell from "./DesktopShell";
+import { useLogout } from "@/hooks/useLogout";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCurrentDevice } from "@/hooks/useCurrentDevice";
 
@@ -183,6 +184,7 @@ export function DesktopSettings() {
   const { language: selectedLanguage, setLanguage: handleLanguageChange, t } = useLanguage();
   const [modal, setModal] = useState<null | "profile" | "password" | "logout" | "language" | "device">(null);
   const [toast, setToast] = useState("");
+  const logout = useLogout();
 
   useEffect(() => {
     const syncTheme = () => {
@@ -338,22 +340,22 @@ export function DesktopSettings() {
 
             <div className="mt-4 space-y-3">
                 {[
-                  { icon: KeyRound, label: isEn ? "Change password" : "Changer le mot de passe" },
-                  { icon: LockKeyhole, label: isEn ? "Account security" : "Securite du compte" },
-                  { icon: FileText, label: isEn ? "Personal documents" : "Documents personnels" },
-                  { icon: LogOut, label: t("settings.logout") },
+                  { id: "password", icon: KeyRound, label: isEn ? "Change password" : "Changer le mot de passe" },
+                  { id: "security", icon: LockKeyhole, label: isEn ? "Account security" : "Securite du compte" },
+                  { id: "documents", icon: FileText, label: isEn ? "Personal documents" : "Documents personnels" },
+                  { id: "logout", icon: LogOut, label: t("settings.logout") },
                 ].map((item) => {
                 const Icon = item.icon;
 
                 return (
                   <button
-                    key={item.label}
+                    key={item.id}
                     type="button"
                     onClick={() => {
-                      if (item.label === "Changer le mot de passe" || item.label === "Change password") setModal("password");
-                      if (item.label === "Securite du compte" || item.label === "Account security") setActiveSection("Sécurité");
-                      if (item.label === "Documents personnels" || item.label === "Personal documents") setActiveSection("Documents");
-                      if (item.label === "Deconnexion" || item.label === "Sign out") setModal("logout");
+                      if (item.id === "password") setModal("password");
+                      if (item.id === "security") setActiveSection("Sécurité");
+                      if (item.id === "documents") setActiveSection("Documents");
+                      if (item.id === "logout") setModal("logout");
                     }}
                     className="flex h-11 w-full items-center justify-between rounded-[12px] border border-[#E5E7EB] px-3 text-left interactive-button"
                   >
@@ -619,7 +621,7 @@ export function DesktopSettings() {
         onClose={() => setModal(null)}
         onConfirm={() => {
           setModal(null);
-          setToast("Session fermee.");
+          logout();
         }}
       />
       <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />

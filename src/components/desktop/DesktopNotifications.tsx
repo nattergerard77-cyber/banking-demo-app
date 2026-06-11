@@ -143,14 +143,24 @@ function NotificationItem({
                 <span className="h-2 w-2 rounded-full bg-[#9ACD00]" />
               )}
               {onDelete && (
-                <button
-                  type="button"
+                <span
+                  role="button"
+                  tabIndex={0}
                   aria-label="Supprimer la notification"
-                  onClick={onDelete}
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-[#6B7280] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[#DC2626]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(e);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onDelete(e as unknown as React.MouseEvent);
+                    }
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[#6B7280] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[#DC2626] cursor-pointer"
                 >
                   <Trash2 size={15} />
-                </button>
+                </span>
               )}
             </span>
           </span>

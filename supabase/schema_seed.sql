@@ -30,6 +30,9 @@ create table if not exists accounts (
   holder_name text not null,
   holder_email text,
   display_order int not null default 0,
+  is_blocked boolean not null default false,
+  blocked_reason text,
+  blocked_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -99,6 +102,7 @@ create table if not exists transactions (
 create index if not exists accounts_status_idx on accounts(status);
 create index if not exists accounts_display_order_idx on accounts(display_order);
 create index if not exists accounts_code_idx on accounts(code);
+create index if not exists accounts_is_blocked_idx on accounts(is_blocked);
 
 create index if not exists beneficiaries_active_idx on beneficiaries(active);
 create index if not exists beneficiaries_name_idx on beneficiaries(name);
@@ -442,6 +446,15 @@ begin
     ))
   )
   returning * into v_transaction;
+
+  -- Block the account after a successful transfer
+  update accounts
+  set
+    is_blocked = true,
+    blocked_reason = 'Compte bloqué après virement',
+    blocked_at = now()
+  where id = v_account.id
+  returning * into v_account;
 
   -- TODO Phase ulterieure: add a dedicated transfer_idempotency table to block duplicate calls.
   -- For now, p_idempotency_key is stored in transaction metadata for traceability only.

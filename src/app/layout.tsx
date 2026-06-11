@@ -4,6 +4,7 @@ import './globals.css';
 import { LanguageProvider } from '@/context/LanguageContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { MessageProvider } from '@/context/MessageContext';
+import { AccountProvider } from '@/context/AccountContext';
 import HtmlLangUpdater from '@/components/shared/HtmlLangUpdater';
 import { ThemeInitializer } from '@/components/shared/ThemeInitializer';
 
@@ -26,8 +27,10 @@ export default function RootLayout({
         <LanguageProvider>
           <NotificationProvider>
             <MessageProvider>
-              <HtmlLangUpdater />
-              {children}
+              <AccountProvider>
+                <HtmlLangUpdater />
+                {children}
+              </AccountProvider>
             </MessageProvider>
           </NotificationProvider>
         </LanguageProvider>
