@@ -17,7 +17,7 @@ import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
 import { createSafeId } from "@/utils/safeId";
-import { validateIban, formatIban, validateBic } from "@/lib/validators";
+import { formatIban } from "@/lib/validators";
 
 const transferTypes = [
   { id: "instant", label: "Virement immediat", description: "Execution des validation" },
@@ -415,8 +415,6 @@ export default function DesktopTransfers() {
     const errors: Record<string, string> = {};
     if (!newBeneficiary.name.trim()) errors.name = "Nom obligatoire";
     if (!newBeneficiary.iban.trim()) errors.iban = "IBAN obligatoire";
-    else if (!validateIban(newBeneficiary.iban)) errors.iban = "IBAN invalide";
-    if (newBeneficiary.bic.trim() && !validateBic(newBeneficiary.bic)) errors.bic = "BIC invalide (ex: BNPAFRPP)";
     if (!newBeneficiary.bank.trim()) errors.bank = "Banque obligatoire";
     if (!newBeneficiary.email.trim()) errors.email = "Email obligatoire";
     if (!newBeneficiary.phone.trim()) errors.phone = "Telephone obligatoire";

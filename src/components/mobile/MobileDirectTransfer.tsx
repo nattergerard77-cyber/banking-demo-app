@@ -16,7 +16,7 @@ import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
 import { createSafeId } from "@/utils/safeId";
-import { validateIban, formatIban, validateBic } from "@/lib/validators";
+import { formatIban } from "@/lib/validators";
 
 type DirectTransferLocalErrors = DirectTransferErrors & { executionDate?: string };
 
@@ -127,8 +127,6 @@ function createErrors(formData: DirectTransferFormData, availableBalance: number
   if (!formData.beneficiaryName.trim()) errors.beneficiaryName = "Champ obligatoire";
   if (!formData.bankName.trim()) errors.bankName = "Champ obligatoire";
   if (!formData.iban.trim()) errors.iban = "Champ obligatoire";
-  else if (!validateIban(formData.iban)) errors.iban = "IBAN invalide";
-  if (formData.bic.trim() && !validateBic(formData.bic)) errors.bic = "BIC invalide (ex: BNPAFRPP)";
   if (!formData.email.trim()) errors.email = "Champ obligatoire";
   if (formData.email && !formData.email.includes("@")) errors.email = "Email invalide";
   if (!formData.phone.trim()) errors.phone = "Champ obligatoire";

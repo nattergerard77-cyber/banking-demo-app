@@ -11,7 +11,7 @@ import { generateTransferPdf } from "@/utils/generateTransferPdf";
 import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
-import { validateIban, formatIban, validateBic } from "@/lib/validators";
+import { formatIban } from "@/lib/validators";
 
 import MobileShell from "./MobileShell";
 import DemoSwitch from "../shared/DemoSwitch";
@@ -330,8 +330,6 @@ export default function MobileTransfers() {
     const errors: Record<string, string> = {};
     if (!newBeneficiary.name.trim()) errors.name = t("transfers.errors.requiredName");
     if (!newBeneficiary.iban.trim()) errors.iban = t("transfers.errors.requiredIban");
-    else if (!validateIban(newBeneficiary.iban)) errors.iban = "IBAN invalide";
-    if (newBeneficiary.bic.trim() && !validateBic(newBeneficiary.bic)) errors.bic = "BIC invalide (ex: BNPAFRPP)";
     if (!newBeneficiary.bank.trim()) errors.bank = t("transfers.errors.requiredBank");
     if (!newBeneficiary.email.trim()) errors.email = t("transfers.errors.requiredEmail");
     if (newBeneficiary.email.trim() && !newBeneficiary.email.includes("@")) errors.email = t("transfers.errors.invalidEmail");
