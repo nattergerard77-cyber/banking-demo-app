@@ -1,4 +1,4 @@
-import { buildBeneficiaryTransferHtml, buildBeneficiaryTransferText } from "@/emails/beneficiaryTransferEmail";
+import { buildBeneficiaryTransferHtml } from "@/emails/beneficiaryTransferEmail";
 import { sendEmail } from "@/lib/emailClient";
 import { generateBeneficiaryTransferPdfBase64 } from "@/utils/generateBeneficiaryTransferPdf";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -130,7 +130,6 @@ async function sendTransferEmail(
   };
 
   const htmlContent = buildBeneficiaryTransferHtml(emailPayload);
-  const textContent = buildBeneficiaryTransferText(emailPayload);
 
   let pdfAttachment: { filename: string; content: Buffer; contentType: string } | null = null;
 
@@ -166,32 +165,22 @@ async function sendTransferEmail(
       to: beneficiaryEmail,
       subject: "Avis de virement",
       html: htmlContent,
-      text: textContent,
       attachments: pdfAttachment ? [pdfAttachment] : [],
     });
 
-    if (emailResult.success) {
-      console.log("[EMAIL DELIVERY] sent", {
-        reference: transfer.reference,
-        to: maskEmail(beneficiaryEmail),
-        messageId: emailResult.messageId,
-        timestamp: new Date().toISOString(),
-      });
-      return "sent";
-    }
-
+    console.log("[EMAIL DELIVERY] sent", {
+      reference: transfer.reference,
+      to: maskEmail(beneficiaryEmail),
+      messageId: emailResult.id,
+      timestamp: new Date().toISOString(),
+    });
+    return "sent";
+  } catch (error) {
     console.error("[EMAIL DELIVERY] failed", {
       reference: transfer.reference,
       to: maskEmail(beneficiaryEmail),
-      error: emailResult.error,
+      error: getErrorMessage(error),
       timestamp: new Date().toISOString(),
-    });
-    return "failed";
-  } catch (error) {
-    console.error("[EMAIL ERROR] beneficiary transfer send failed", {
-      reference: transfer.reference,
-      email: maskEmail(beneficiaryEmail),
-      message: getErrorMessage(error),
     });
     return "failed";
   }
