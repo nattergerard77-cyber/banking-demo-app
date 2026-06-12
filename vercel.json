@@ -2,7 +2,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "env": {
-    "RESEND_API_KEY": "@resend_api_key",
     "EMAIL_FROM_ADDRESS": "@email_from_address",
     "EMAIL_FROM_NAME": "@email_from_name",
     "NEXT_PUBLIC_SUPABASE_URL": "@next_public_supabase_url",
