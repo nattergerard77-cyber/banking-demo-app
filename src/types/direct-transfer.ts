@@ -1,4 +1,4 @@
-export type DirectTransferStep = "form" | "recap" | "success";
+export type DirectTransferStep = "form" | "recap" | "loading" | "success";
 
 export type DirectTransferFormData = {
   account: string;
@@ -6,6 +6,7 @@ export type DirectTransferFormData = {
   beneficiaryName: string;
   bankName: string;
   iban: string;
+  bic: string;
   email: string;
   phone: string;
   amount: string;
@@ -14,5 +15,5 @@ export type DirectTransferFormData = {
 };
 
 export type DirectTransferErrors = Partial<
-  Record<"beneficiaryName" | "bankName" | "iban" | "email" | "phone" | "amount", string>
+  Record<"beneficiaryName" | "bankName" | "iban" | "bic" | "email" | "phone" | "amount", string>
 >;

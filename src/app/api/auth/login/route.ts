@@ -13,9 +13,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!verifyDemoCredentials({ loginId, password })) {
+    const credentialCheck = verifyDemoCredentials({ loginId, password });
+    if (!credentialCheck.valid) {
       return NextResponse.json(
-        { error: 'Identifiant ou mot de passe incorrect' },
+        { error: credentialCheck.message, field: credentialCheck.field },
         { status: 401 }
       )
     }

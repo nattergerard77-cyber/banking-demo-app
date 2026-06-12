@@ -16,6 +16,7 @@ import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
 import { createSafeId } from "@/utils/safeId";
+import { validateIban, formatIban, validateBic } from "@/lib/validators";
 
 type DirectTransferLocalErrors = DirectTransferErrors & { executionDate?: string };
 
@@ -47,6 +48,7 @@ const initialFormData: DirectTransferFormData = {
   beneficiaryName: "",
   bankName: "",
   iban: "",
+  bic: "",
   email: "",
   phone: "",
   amount: "",
@@ -125,6 +127,8 @@ function createErrors(formData: DirectTransferFormData, availableBalance: number
   if (!formData.beneficiaryName.trim()) errors.beneficiaryName = "Champ obligatoire";
   if (!formData.bankName.trim()) errors.bankName = "Champ obligatoire";
   if (!formData.iban.trim()) errors.iban = "Champ obligatoire";
+  else if (!validateIban(formData.iban)) errors.iban = "IBAN invalide";
+  if (formData.bic.trim() && !validateBic(formData.bic)) errors.bic = "BIC invalide (ex: BNPAFRPP)";
   if (!formData.email.trim()) errors.email = "Champ obligatoire";
   if (formData.email && !formData.email.includes("@")) errors.email = "Email invalide";
   if (!formData.phone.trim()) errors.phone = "Champ obligatoire";
@@ -313,6 +317,7 @@ export default function MobileDirectTransfer() {
       beneficiaryId: null,
       beneficiaryName: formData.beneficiaryName.trim(),
       beneficiaryIban: formData.iban.trim(),
+      beneficiaryBic: formData.bic.trim() || null,
       beneficiaryBank: formData.bankName.trim(),
       beneficiaryEmail: formData.email.trim(),
       amount: parseAmount(formData.amount),
@@ -359,7 +364,7 @@ export default function MobileDirectTransfer() {
       const currentDate = new Date();
       setValidatedAt(currentDate);
       setFinalReference(supabaseReference);
-      setStep("success");
+      setStep("loading");
       addTransferNotification({ beneficiary: formData.beneficiaryName, amount, reference: supabaseReference });
       addTransferMessage({
         beneficiary: formData.beneficiaryName,
@@ -373,6 +378,14 @@ export default function MobileDirectTransfer() {
       const nextEmailStatus = result.transfer?.email_status ?? result.emailStatus ?? "idle";
       setEmailStatus(nextEmailStatus);
       setEmailError(nextEmailStatus === "failed" ? "L'avis de virement n'a pas pu etre envoye au beneficiaire." : null);
+
+      await new Promise((r) => setTimeout(r, 4000));
+      setStep("success");
+
+      setTimeout(() => {
+        setStep("form");
+        resetFlow();
+      }, 3000);
     } catch (error) {
       console.error("[transfer] submit failed", error);
       setSubmitError(
@@ -393,7 +406,7 @@ export default function MobileDirectTransfer() {
   }
 
   function resetFlow() {
-    setFormData(initialFormData);
+    setFormData((prev) => ({ ...initialFormData, bic: prev.bic || "" }));
     setErrors({});
     setValidatedAt(null);
     setTemporaryReference("");
@@ -410,8 +423,8 @@ export default function MobileDirectTransfer() {
         <div className="space-y-4 pb-4">
           <div>
             <button type="button" onClick={() => { if (step === "form") { window.history.back(); return; } resetEmailForNewTransfer(); setStep("form"); }} className="mb-2 inline-flex items-center gap-1 text-[13px] font-semibold text-[#050033]" aria-label={t("common.back")}><ArrowLeft size={15} />{t("common.back")}</button>
-            <h1 className="text-[24px] font-bold tracking-tight text-[#090927]">{step === "form" ? t("transfers.directTransfer") : step === "recap" ? t("transfers.recap.title") : t("transfers.success.title")}</h1>
-            <p className="mt-1 text-[14px] text-[#6B7280]">{step === "form" ? "Beneficiaire non enregistre" : step === "recap" ? t("transfers.recap.subtitle") : t("transfers.success.subtitle")}</p>
+            <h1 className="text-[24px] font-bold tracking-tight text-[#090927]">{step === "form" ? t("transfers.directTransfer") : step === "recap" ? t("transfers.recap.title") : "Virement en cours..."}</h1>
+            <p className="mt-1 text-[14px] text-[#6B7280]">{step === "form" ? "Beneficiaire non enregistre" : step === "recap" ? t("transfers.recap.subtitle") : step === "success" ? t("transfers.success.subtitle") : "Traitement en cours..."}</p>
           </div>
 
           {step === "form" ? (
@@ -427,7 +440,8 @@ export default function MobileDirectTransfer() {
 
                 <Field label="Nom complet *"><input value={formData.beneficiaryName} onChange={(e) => setFormData((c) => ({ ...c, beneficiaryName: e.target.value }))} placeholder="Saisir le nom complet" className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-[#9ACD00]" /><FieldError message={errors.beneficiaryName} /></Field>
                 <Field label="Banque *"><input value={formData.bankName} onChange={(e) => setFormData((c) => ({ ...c, bankName: e.target.value }))} placeholder="Nom de la banque" className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-[#9ACD00]" /><FieldError message={errors.bankName} /></Field>
-                <Field label="IBAN *"><input value={formData.iban} onChange={(e) => setFormData((c) => ({ ...c, iban: e.target.value }))} placeholder="Saisir l'IBAN" className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-[#9ACD00]" /><FieldError message={errors.iban} /></Field>
+                <Field label="BIC (optionnel)"><input value={formData.bic} onChange={(e) => setFormData((c) => ({ ...c, bic: e.target.value }))} placeholder="Ex: BNPAFRPP" className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-[#9ACD00]" /><FieldError message={errors.bic} /></Field>
+                <Field label="IBAN *"><input value={formData.iban} onChange={(e) => setFormData((c) => ({ ...c, iban: e.target.value }))} onBlur={() => setFormData((c) => ({ ...c, iban: formatIban(c.iban) }))} placeholder="Saisir l'IBAN" className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-[#9ACD00]" /><FieldError message={errors.iban} /></Field>
                 <Field label="Email *"><div className="flex h-11 items-center rounded-[10px] border border-[#E5E7EB] px-3"><Mail size={15} className="text-[#6B7280]" /><input type="email" value={formData.email} onChange={(e) => setFormData((c) => ({ ...c, email: e.target.value }))} placeholder="exemple@email.com" className="ml-2 w-full text-[14px] outline-none" /></div><FieldError message={errors.email} /></Field>
                 <Field label="Numero de telephone *"><div className="flex h-11 items-center rounded-[10px] border border-[#E5E7EB] px-3"><Phone size={15} className="text-[#6B7280]" /><input value={formData.phone} onChange={(e) => setFormData((c) => ({ ...c, phone: e.target.value }))} placeholder="+352 6XX XXX XXX" className="ml-2 w-full text-[14px] outline-none" /></div><FieldError message={errors.phone} /></Field>
                 <Field label="Montant *"><div className="flex h-11 items-center rounded-[10px] border border-[#E5E7EB] px-3"><Euro size={15} className="text-[#6B7280]" /><input value={formData.amount} onChange={(e) => setFormData((c) => ({ ...c, amount: e.target.value }))} placeholder="0,00" className="ml-2 min-w-0 flex-1 text-[14px] outline-none" /><span className="text-[12px] text-[#6B7280]">EUR</span></div><FieldError message={errors.amount} /></Field>
@@ -497,6 +511,7 @@ export default function MobileDirectTransfer() {
                             <span className="text-[13px] text-[#6B7280] truncate">{formData.bankName}</span>
                           </div>
                           <p className="mt-1 text-[12px] text-[#9CA3AF] font-mono tracking-wide truncate">{formData.iban}</p>
+                          {formData.bic ? <p className="text-[11px] text-[#9CA3AF] font-mono">BIC: {formData.bic}</p> : null}
                           {(formData.email || formData.phone) && (
                             <div className="mt-2.5 border-t border-[#F3F4F6] pt-2.5 space-y-1">
                               {formData.email && (
@@ -588,6 +603,12 @@ export default function MobileDirectTransfer() {
             </>
           ) : null}
 
+          {step === "loading" ? (
+            <div className="flex flex-col items-center justify-center py-24">
+              <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-[#E5E7EB] border-t-[#050033]" />
+              <p className="mt-4 text-[16px] font-semibold text-[#090927]">Traitement en cours...</p>
+            </div>
+          ) : null}
           {step === "success" ? (
             <>
               <div className="flex items-center gap-2 text-[12px] font-medium mb-1">
@@ -637,9 +658,15 @@ export default function MobileDirectTransfer() {
                           <span className="text-[13px] font-medium text-[#090927]">{selectedDebitAccount?.name ?? ""}</span>
                         </div>
                         <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
-                          <span className="text-[13px] text-[#6B7280]">{t("transfers.receipt.debitIban")}</span>
-                          <span className="text-[12px] font-mono text-[#9CA3AF]">{maskIban(selectedDebitAccount?.iban ?? "")}</span>
+                          <span className="text-[13px] text-[#6B7280]">{t("transfers.receipt.beneficiaryIban")}</span>
+                          <span className="text-[12px] font-mono text-[#9CA3AF]">{maskIban(formData.iban)}</span>
                         </div>
+                        {formData.bic ? (
+                        <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
+                          <span className="text-[13px] text-[#6B7280]">BIC</span>
+                          <span className="text-[12px] font-mono text-[#9CA3AF]">{formData.bic}</span>
+                        </div>
+                        ) : null}
                         <div className="flex items-center justify-between border-b border-[#F3F4F6] py-2.5">
                           <span className="text-[13px] text-[#6B7280]">{t("transfers.receipt.beneficiary")}</span>
                           <div className="flex items-center gap-2">

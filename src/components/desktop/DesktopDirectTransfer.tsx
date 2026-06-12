@@ -30,6 +30,7 @@ import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
 import { createSafeId } from "@/utils/safeId";
+import { validateIban, formatIban, validateBic } from "@/lib/validators";
 
 type DirectTransferLocalErrors = DirectTransferErrors & { executionDate?: string };
 
@@ -61,6 +62,7 @@ const initialFormData: DirectTransferFormData = {
   beneficiaryName: "",
   bankName: "",
   iban: "",
+  bic: "",
   email: "",
   phone: "",
   amount: "",
@@ -75,7 +77,12 @@ function parseAmount(value: string) {
 }
 
 function parseBalance(value: string) {
-  return Number.parseFloat(value.replace(/\s/g, "").replace("EUR", "").replace(/\./g, "").replace(",", "."));
+  const cleaned = value.replace(/\s/g, "").replace("EUR", "");
+  const match = cleaned.match(/[\d.,]+/);
+  if (!match) return 0;
+  const numStr = match[0].replace(/\./g, "").replace(",", ".");
+  const parsed = Number.parseFloat(numStr);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function todayInputValue() {
@@ -137,6 +144,8 @@ function createErrors(formData: DirectTransferFormData, balance: string, transfe
   if (!formData.beneficiaryName.trim()) errors.beneficiaryName = "Le nom complet est obligatoire.";
   if (!formData.bankName.trim()) errors.bankName = "La banque est obligatoire.";
   if (!formData.iban.trim()) errors.iban = "L'IBAN est obligatoire.";
+  else if (!validateIban(formData.iban)) errors.iban = "IBAN invalide";
+  if (formData.bic.trim() && !validateBic(formData.bic)) errors.bic = "BIC invalide (ex: BNPAFRPP)";
   if (!formData.email.trim()) errors.email = "L'email est obligatoire.";
   if (formData.email && !formData.email.includes("@")) errors.email = "L'email doit contenir @.";
   if (!formData.phone.trim()) errors.phone = "Le numero de telephone est obligatoire.";
@@ -328,6 +337,7 @@ export default function DesktopDirectTransfer() {
       beneficiaryId: null,
       beneficiaryName: formData.beneficiaryName.trim(),
       beneficiaryIban: formData.iban.trim(),
+      beneficiaryBic: formData.bic.trim() || null,
       beneficiaryBank: formData.bankName.trim(),
       beneficiaryEmail: formData.email.trim(),
       amount: parseAmount(formData.amount),
@@ -374,7 +384,7 @@ export default function DesktopDirectTransfer() {
       const currentDate = new Date();
       setValidatedAt(currentDate);
       setFinalReference(supabaseReference);
-      setStep("success");
+      setStep("loading");
       addTransferNotification({ beneficiary: formData.beneficiaryName, amount: formattedAmount, reference: supabaseReference });
       addTransferMessage({
         beneficiary: formData.beneficiaryName,
@@ -388,6 +398,19 @@ export default function DesktopDirectTransfer() {
       const nextEmailStatus = result.transfer.email_status ?? result.emailStatus ?? "idle";
       setEmailStatus(nextEmailStatus);
       setEmailError(nextEmailStatus === "failed" ? "L'avis de virement n'a pas pu etre envoye au beneficiaire." : null);
+
+      await new Promise((r) => setTimeout(r, 4000));
+      setStep("success");
+
+      setTimeout(() => {
+        setStep("form");
+        setFormData(initialFormData);
+        setTemporaryReference("");
+        setFinalReference("");
+        setValidatedAt(null);
+        resetEmailNotice();
+        setSubmitError(null);
+      }, 3000);
     } catch (error) {
       console.error("[transfer] submit failed", error);
       setSubmitError(
@@ -471,8 +494,13 @@ export default function DesktopDirectTransfer() {
 
                     <div>
                       <label className="mb-2 block text-[13px] font-semibold text-[#090927]">IBAN *</label>
-                      <input value={formData.iban} onChange={(e) => setFormData((c) => ({ ...c, iban: e.target.value }))} placeholder="Saisissez l'IBAN du beneficiaire" className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] text-[#090927] outline-none focus-visible:ring-2 focus-visible:ring-[#9ACD00]" />
+                      <input value={formData.iban} onChange={(e) => setFormData((c) => ({ ...c, iban: e.target.value }))} onBlur={() => setFormData((c) => ({ ...c, iban: formatIban(c.iban) }))} placeholder="Saisissez l'IBAN du beneficiaire" className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] text-[#090927] outline-none focus-visible:ring-2 focus-visible:ring-[#9ACD00]" />
                       <FieldError message={errors.iban} />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-[13px] font-semibold text-[#090927]">BIC (optionnel)</label>
+                      <input value={formData.bic} onChange={(e) => setFormData((c) => ({ ...c, bic: e.target.value }))} placeholder="Ex: BNPAFRPP" className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 text-[14px] text-[#090927] outline-none focus-visible:ring-2 focus-visible:ring-[#9ACD00]" />
+                      <FieldError message={errors.bic} />
                     </div>
                     <div>
                       <label className="mb-2 block text-[13px] font-semibold text-[#090927]">Email *</label>
@@ -566,6 +594,7 @@ export default function DesktopDirectTransfer() {
                   <div className="flex items-center justify-between"><span className="font-semibold text-[#6B7280]">{t("transfers.receipt.beneficiary")}</span><span className="font-semibold text-[#090927]">{formData.beneficiaryName}</span></div>
                   <div className="flex items-center justify-between"><span className="font-semibold text-[#6B7280]">{t("transfers.receipt.bank")}</span><span className="font-semibold text-[#090927]">{formData.bankName}</span></div>
                   <div className="flex items-center justify-between"><span className="font-semibold text-[#6B7280]">{t("transfers.receipt.beneficiaryIban")}</span><span className="font-semibold text-[#090927]">{formData.iban}</span></div>
+                  {formData.bic ? <div className="flex items-center justify-between"><span className="font-semibold text-[#6B7280]">BIC</span><span className="font-semibold text-[#090927]">{formData.bic}</span></div> : null}
                   <div className="flex items-center justify-between"><span className="font-semibold text-[#6B7280]">{t("transfers.receipt.email")}</span><span className="font-semibold text-[#090927]">{formData.email}</span></div>
                   <div className="flex items-center justify-between"><span className="font-semibold text-[#6B7280]">{t("transfers.receipt.phone")}</span><span className="font-semibold text-[#090927]">{formData.phone}</span></div>
                   <div className="flex items-center justify-between"><span className="font-semibold text-[#6B7280]">{t("transfers.receipt.amount")}</span><span className="font-semibold text-[#090927]">{formattedAmount}</span></div>
@@ -598,6 +627,13 @@ export default function DesktopDirectTransfer() {
                 </aside>
               </div>
             </>
+          ) : null}
+
+          {step === "loading" ? (
+            <div className="flex flex-col items-center justify-center py-24">
+              <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-[#E5E7EB] border-t-[#050033]" />
+              <p className="mt-4 text-[16px] font-semibold text-[#090927]">Traitement en cours...</p>
+            </div>
           ) : null}
 
           {step === "success" ? (

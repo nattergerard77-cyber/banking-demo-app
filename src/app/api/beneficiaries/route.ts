@@ -1,10 +1,21 @@
+import { cookies } from "next/headers";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
+async function isAuthenticated(): Promise<boolean> {
+  try {
+    const cookieStore = await cookies();
+    return cookieStore.get("banking_demo_session")?.value === "authenticated";
+  } catch {
+    return false;
+  }
+}
+
 type PostBeneficiaryBody = {
   name: string;
   iban: string;
+  bic?: string;
   bank?: string;
   email?: string;
   phone?: string;
@@ -47,10 +58,13 @@ function isValidEmail(email: string): boolean {
 
 export async function GET() {
   try {
+    if (!(await isAuthenticated())) {
+      return jsonResponse({ success: false, error: "UNAUTHORIZED" }, 401);
+    }
     const supabase = createServerSupabaseClient();
     const { data, error } = await supabase
       .from("beneficiaries")
-      .select("id, code, name, type, iban, bank, email, phone, initials, favorite, active, created_at, updated_at")
+      .select("id, code, name, type, iban, bic, bank, email, phone, initials, favorite, active, created_at, updated_at")
       .eq("active", true)
       .order("favorite", { ascending: false })
       .order("name", { ascending: true });
@@ -69,6 +83,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    if (!(await isAuthenticated())) {
+      return jsonResponse<PostBeneficiaryResponse>({ success: false, error: "UNAUTHORIZED", message: "Non authentifié" }, 401);
+    }
     const body = (await request.json()) as PostBeneficiaryBody;
 
     if (!body.name?.trim()) {
@@ -94,6 +111,7 @@ export async function POST(request: Request) {
 
     const name = body.name.trim();
     const iban = body.iban.trim().toUpperCase();
+    const bic = body.bic?.trim().toUpperCase() ?? null;
     const bank = body.bank?.trim() ?? "";
     const email = body.email?.trim() ?? null;
     const phone = body.phone?.trim() ?? null;
@@ -129,6 +147,7 @@ export async function POST(request: Request) {
         name,
         type: "Particulier",
         iban,
+        bic,
         bank,
         email,
         phone,

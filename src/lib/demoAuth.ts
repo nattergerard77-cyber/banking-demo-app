@@ -6,9 +6,17 @@ export interface DemoCredentials {
   password: string
 }
 
-export function verifyDemoCredentials(credentials: DemoCredentials): boolean {
-  return (
-    credentials.loginId === DEMO_LOGIN_ID &&
-    credentials.password === DEMO_LOGIN_PASSWORD
-  )
+export type CredentialError =
+  | { valid: false; field: "loginId"; message: string }
+  | { valid: false; field: "password"; message: string }
+  | { valid: true };
+
+export function verifyDemoCredentials(credentials: DemoCredentials): CredentialError {
+  if (credentials.loginId !== DEMO_LOGIN_ID) {
+    return { valid: false, field: "loginId", message: "Identifiant incorrect" };
+  }
+  if (credentials.password !== DEMO_LOGIN_PASSWORD) {
+    return { valid: false, field: "password", message: "Mot de passe incorrect" };
+  }
+  return { valid: true };
 }

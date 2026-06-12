@@ -167,7 +167,7 @@ export function DesktopDashboard() {
                 COMPTE BLOQUÉ
               </p>
               <p style={{ color: '#7f1d1d', fontSize: '14px', margin: '4px 0 0 0' }}>
-                {blockedAccount.blocked_reason || 'Votre compte a été bloqué après un virement.'}
+                {blockedAccount.blocked_reason || 'Votre compte est temporairement bloqué. Veuillez contacter le support.'}
               </p>
               <p style={{ color: '#991b1b', fontSize: '12px', margin: '4px 0 0 0' }}>
                 Contactez le support pour plus d&apos;informations.

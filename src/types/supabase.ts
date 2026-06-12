@@ -23,6 +23,7 @@ export type SupabaseBeneficiary = {
   code?: string | null;
   name: string;
   iban: string;
+  bic?: string | null;
   bank: string;
   email?: string | null;
   phone?: string | null;

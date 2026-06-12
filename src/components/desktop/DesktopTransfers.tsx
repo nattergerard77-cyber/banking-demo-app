@@ -17,6 +17,7 @@ import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
 import { createSafeId } from "@/utils/safeId";
+import { validateIban, formatIban, validateBic } from "@/lib/validators";
 
 const transferTypes = [
   { id: "instant", label: "Virement immediat", description: "Execution des validation" },
@@ -45,6 +46,7 @@ type Beneficiary = {
   name: string;
   type: string;
   iban: string;
+  bic?: string;
   bank: string;
   email: string;
   phone: string;
@@ -62,7 +64,7 @@ type RecentTransferItem = {
 };
 
 type BeneficiariesApiResponse =
-  | { success: true; beneficiaries: Array<{ id: string; code?: string | null; name: string; type?: string | null; iban: string; bank: string; email?: string | null; phone?: string | null; initials?: string | null; favorite: boolean; active: boolean }> }
+  | { success: true; beneficiaries: Array<{ id: string; code?: string | null; name: string; type?: string | null; iban: string; bic?: string | null; bank: string; email?: string | null; phone?: string | null; initials?: string | null; favorite: boolean; active: boolean }> }
   | { success: false; error: string };
 
 
@@ -111,7 +113,7 @@ function todayDateString(): string {
 }
 
 function maskIban(iban: string) {
-  const clean = iban.replace(/\s+/g, "");
+  const clean = iban.replace(/\s+/g, "").toUpperCase();
   if (clean.length < 10) return iban;
   return `${clean.slice(0, 4)} ${clean.slice(4, 8)} **** **** ${clean.slice(-4)}`;
 }
@@ -171,8 +173,8 @@ export default function DesktopTransfers() {
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [selectedDebitAccountId, setSelectedDebitAccountId] = useState("current");
   const [selectedTransferTypeId, setSelectedTransferTypeId] = useState("instant");
-  const [amount, setAmount] = useState("120");
-  const [reason, setReason] = useState("Règlement privé");
+  const [amount, setAmount] = useState("0");
+  const [reason, setReason] = useState("");
   const [scheduledDate, setScheduledDate] = useState(todayInputValue());
   const [isRecurring, setIsRecurring] = useState(false);
   const [amountError, setAmountError] = useState("");
@@ -180,7 +182,7 @@ export default function DesktopTransfers() {
   const [toast, setToast] = useState("");
 
   const [showAdd, setShowAdd] = useState(false);
-  const [newBeneficiary, setNewBeneficiary] = useState({ name: "", iban: "", bank: "", email: "", phone: "" });
+  const [newBeneficiary, setNewBeneficiary] = useState({ name: "", iban: "", bic: "", bank: "", email: "", phone: "" });
   const [addErrors, setAddErrors] = useState<Record<string, string>>({});
 
   const [showRecap, setShowRecap] = useState(false);
@@ -296,6 +298,7 @@ export default function DesktopTransfers() {
           name: b.name,
           type: b.type ?? "Particulier",
           iban: b.iban,
+          bic: b.bic ?? undefined,
           bank: b.bank,
           email: b.email ?? "",
           phone: b.phone ?? "",
@@ -326,6 +329,7 @@ export default function DesktopTransfers() {
         name: b.name,
         type: b.type ?? "Particulier",
         iban: b.iban,
+        bic: b.bic ?? undefined,
         bank: b.bank,
         email: b.email ?? "",
         phone: b.phone ?? "",
@@ -411,6 +415,8 @@ export default function DesktopTransfers() {
     const errors: Record<string, string> = {};
     if (!newBeneficiary.name.trim()) errors.name = "Nom obligatoire";
     if (!newBeneficiary.iban.trim()) errors.iban = "IBAN obligatoire";
+    else if (!validateIban(newBeneficiary.iban)) errors.iban = "IBAN invalide";
+    if (newBeneficiary.bic.trim() && !validateBic(newBeneficiary.bic)) errors.bic = "BIC invalide (ex: BNPAFRPP)";
     if (!newBeneficiary.bank.trim()) errors.bank = "Banque obligatoire";
     if (!newBeneficiary.email.trim()) errors.email = "Email obligatoire";
     if (!newBeneficiary.phone.trim()) errors.phone = "Telephone obligatoire";
@@ -425,6 +431,7 @@ export default function DesktopTransfers() {
         body: JSON.stringify({
           name: newBeneficiary.name.trim(),
           iban: newBeneficiary.iban.trim(),
+          bic: newBeneficiary.bic.trim() || undefined,
           bank: newBeneficiary.bank.trim(),
           email: newBeneficiary.email.trim(),
           phone: newBeneficiary.phone.trim(),
@@ -439,7 +446,7 @@ export default function DesktopTransfers() {
       }
 
       setShowAdd(false);
-      setNewBeneficiary({ name: "", iban: "", bank: "", email: "", phone: "" });
+      setNewBeneficiary({ name: "", iban: "", bic: "", bank: "", email: "", phone: "" });
       setAddErrors({});
       setToast("Beneficiaire ajoute.");
       setSelectedBeneficiaryId(json.beneficiary.id);
@@ -467,6 +474,7 @@ export default function DesktopTransfers() {
       beneficiaryId: isUuid(selectedBeneficiary.id) ? selectedBeneficiary.id : null,
       beneficiaryName: selectedBeneficiary.name.trim(),
       beneficiaryIban: selectedBeneficiary.iban.trim(),
+      beneficiaryBic: selectedBeneficiary.bic?.trim() || null,
       beneficiaryBank: selectedBeneficiary.bank.trim(),
       beneficiaryEmail: selectedBeneficiary.email.trim(),
       amount: parseAmount(amount),
@@ -515,6 +523,8 @@ export default function DesktopTransfers() {
         return;
       }
 
+      setShowRecap(false);
+
       const response = await fetch("/api/transfers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -532,8 +542,6 @@ export default function DesktopTransfers() {
       const now = new Date();
       setValidatedAt(now);
       setFinalReference(supabaseReference);
-      setShowRecap(false);
-      setShowSuccess(true);
       addTransferNotification({ beneficiary: selectedBeneficiary.name, amount: totalFormatted, reference: supabaseReference });
       addTransferMessage({
         beneficiary: selectedBeneficiary.name,
@@ -548,6 +556,14 @@ export default function DesktopTransfers() {
       setEmailStatus(nextEmailStatus);
       setEmailError(nextEmailStatus === "failed" ? "L'avis de virement n'a pas pu etre envoye au beneficiaire." : null);
       void refreshRecentTransfers();
+
+      await new Promise((r) => setTimeout(r, 4000));
+      setShowSuccess(true);
+      
+      setTimeout(() => {
+        setShowSuccess(false);
+        resetForm();
+      }, 3000);
     } catch (error) {
       console.error("[transfer] submit failed", error);
       setSubmitError(
@@ -558,6 +574,17 @@ export default function DesktopTransfers() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function resetForm() {
+    setAmount("");
+    setReason("");
+    setTemporaryReference("");
+    setFinalReference("");
+    setValidatedAt(null);
+    resetEmailNotice();
+    setSubmitError(null);
+    setIsSubmitting(false);
   }
 
   function downloadReceipt() {
@@ -740,7 +767,8 @@ export default function DesktopTransfers() {
             <div className="flex items-center justify-between"><h2 className="text-[20px] font-bold text-[#090927]">Ajouter un beneficiaire</h2><button type="button" aria-label="Fermer" onClick={() => setShowAdd(false)}><X size={18} /></button></div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-[14px]">
               <div><FieldLabel>Nom complet</FieldLabel><input value={newBeneficiary.name} onChange={(e) => setNewBeneficiary((c) => ({ ...c, name: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 outline-none" />{addErrors.name ? <p className="mt-1 text-[12px] text-[#DC2626]">{addErrors.name}</p> : null}</div>
-              <div><FieldLabel>IBAN</FieldLabel><input value={newBeneficiary.iban} onChange={(e) => setNewBeneficiary((c) => ({ ...c, iban: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 outline-none" />{addErrors.iban ? <p className="mt-1 text-[12px] text-[#DC2626]">{addErrors.iban}</p> : null}</div>
+              <div><FieldLabel>IBAN</FieldLabel><input value={newBeneficiary.iban} onChange={(e) => setNewBeneficiary((c) => ({ ...c, iban: e.target.value }))} onBlur={() => setNewBeneficiary((c) => ({ ...c, iban: formatIban(c.iban) }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 outline-none" />{addErrors.iban ? <p className="mt-1 text-[12px] text-[#DC2626]">{addErrors.iban}</p> : null}</div>
+              <div><FieldLabel>BIC (optionnel)</FieldLabel><input value={newBeneficiary.bic} onChange={(e) => setNewBeneficiary((c) => ({ ...c, bic: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 outline-none" placeholder="Ex: BNPAFRPP" />{addErrors.bic ? <p className="mt-1 text-[12px] text-[#DC2626]">{addErrors.bic}</p> : null}</div>
               <div><FieldLabel>Banque</FieldLabel><input value={newBeneficiary.bank} onChange={(e) => setNewBeneficiary((c) => ({ ...c, bank: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 outline-none" />{addErrors.bank ? <p className="mt-1 text-[12px] text-[#DC2626]">{addErrors.bank}</p> : null}</div>
               <div><FieldLabel>Email</FieldLabel><input value={newBeneficiary.email} onChange={(e) => setNewBeneficiary((c) => ({ ...c, email: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 outline-none" />{addErrors.email ? <p className="mt-1 text-[12px] text-[#DC2626]">{addErrors.email}</p> : null}</div>
               <div className="col-span-2"><FieldLabel>Telephone</FieldLabel><input value={newBeneficiary.phone} onChange={(e) => setNewBeneficiary((c) => ({ ...c, phone: e.target.value }))} className="h-11 w-full rounded-[10px] border border-[#E5E7EB] px-3 outline-none" />{addErrors.phone ? <p className="mt-1 text-[12px] text-[#DC2626]">{addErrors.phone}</p> : null}</div>
@@ -784,13 +812,21 @@ export default function DesktopTransfers() {
         </div>
       ) : null}
 
+      {isSubmitting && !showRecap ? (
+        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-[#050033]/40 p-4">
+          <div className="flex flex-col items-center gap-4 rounded-2xl bg-white px-10 py-8 shadow-2xl">
+            <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#E5E7EB] border-t-[#050033]" />
+            <p className="text-[16px] font-semibold text-[#090927]">Traitement en cours...</p>
+          </div>
+        </div>
+      ) : null}
       {showSuccess ? (
         <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-[#050033]/40 p-4">
           <div role="dialog" aria-modal="true" className="w-full max-w-3xl rounded-[24px] border border-[#E5E7EB] bg-white p-6 shadow-2xl">
             <div className="text-center"><span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#9ACD00] text-white"><CheckCircle2 size={34} /></span><h2 className="mt-3 text-[24px] font-bold text-[#090927]">Virement effectue avec succes</h2><p className="mt-1 text-[14px] text-[#6B7280]">Virement effectue avec succes.</p><p className="text-[13px] text-[#6B7280]">Recu prepare pour consultation.</p></div>
             <div className="mt-5 grid grid-cols-2 gap-3 text-[14px]"><p><span className="text-[#6B7280]">Reference</span><br /><span className="font-semibold text-[#090927]">{finalReference}</span></p><p><span className="text-[#6B7280]">Date</span><br /><span className="font-semibold text-[#090927]">{(validatedAt ?? new Date()).toLocaleDateString("fr-FR")}</span></p><p><span className="text-[#6B7280]">Heure</span><br /><span className="font-semibold text-[#090927]">{(validatedAt ?? new Date()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span></p><p><span className="text-[#6B7280]">Date d&apos;execution</span><br /><span className="font-semibold text-[#090927]">{executionDate}</span></p><p><span className="text-[#6B7280]">Compte debite</span><br /><span className="font-semibold text-[#090927]">{selectedDebitAccount?.name ?? ""}</span></p><p><span className="text-[#6B7280]">IBAN compte debite</span><br /><span className="font-semibold text-[#090927]">{maskIban(selectedDebitAccount?.iban ?? "")}</span></p><p><span className="text-[#6B7280]">Type de virement</span><br /><span className="font-semibold text-[#090927]">{selectedTransferType.label}</span></p><p><span className="text-[#6B7280]">Beneficiaire</span><br /><span className="font-semibold text-[#090927]">{selectedBeneficiary.name}</span></p><p><span className="text-[#6B7280]">Banque</span><br /><span className="font-semibold text-[#090927]">{selectedBeneficiary.bank}</span></p><p><span className="text-[#6B7280]">IBAN beneficiaire</span><br /><span className="font-semibold text-[#090927]">{maskIban(selectedBeneficiary.iban)}</span></p><p><span className="text-[#6B7280]">Montant</span><br /><span className="font-semibold text-[#090927]">{totalFormatted}</span></p><p><span className="text-[#6B7280]">Frais</span><br /><span className="font-semibold text-[#7AA600]">0,00 EUR</span></p><p><span className="text-[#6B7280]">Total debite</span><br /><span className="text-[18px] font-bold text-[#050033]">{totalFormatted}</span></p></div>
             {emailStatus !== "idle" ? <div className="mt-4 rounded-[12px] border border-[#E5E7EB] bg-[#F8F9FB] p-3 text-[13px] text-[#6B7280]"><p className="font-semibold text-[#090927]">{emailStatus === "sending" ? t("transfers.emailNotice.sending") : emailStatus === "sent" ? t("transfers.emailNotice.sent") : t("transfers.emailNotice.failed")}</p>{emailStatus === "sent" ? <p className="mt-1">{t("transfers.emailNotice.sentTo")} : {selectedBeneficiary.email}</p> : null}{emailError ? <p className="mt-1 text-[12px] text-[#DC2626]">{emailError}</p> : null}</div> : null}
-            <div className="mt-6 flex flex-wrap justify-end gap-2"><button type="button" onClick={downloadReceipt} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Telecharger le recu</button><button type="button" onClick={() => { setShowSuccess(false); setAmount(""); setReason(""); setTemporaryReference(""); setFinalReference(""); setValidatedAt(null); resetEmailNotice(); setSubmitError(null); setIsSubmitting(false); }} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Faire un autre virement</button><button type="button" onClick={() => { setShowSuccess(false); setValidatedAt(null); resetEmailForNewTransfer(); }} className="h-10 rounded-[10px] bg-[#050033] px-4 text-[14px] font-semibold text-white">Fermer</button></div>
+             <div className="mt-6 flex flex-wrap justify-end gap-2"><button type="button" onClick={downloadReceipt} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Telecharger le recu</button><button type="button" onClick={() => { setShowSuccess(false); resetForm(); }} className="h-10 rounded-[10px] border border-[#050033] px-4 text-[14px] font-semibold text-[#050033]">Faire un autre virement</button><button type="button" onClick={() => { setShowSuccess(false); setValidatedAt(null); resetEmailForNewTransfer(); }} className="h-10 rounded-[10px] bg-[#050033] px-4 text-[14px] font-semibold text-white">Fermer</button></div>
           </div>
         </div>
       ) : null}

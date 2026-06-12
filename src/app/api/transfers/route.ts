@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { buildBeneficiaryTransferHtml } from "@/emails/beneficiaryTransferEmail";
 import { sendEmail } from "@/lib/emailClient";
 import { generateBeneficiaryTransferPdfBase64 } from "@/utils/generateBeneficiaryTransferPdf";
@@ -5,12 +6,22 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
+async function isAuthenticated(): Promise<boolean> {
+  try {
+    const cookieStore = await cookies();
+    return cookieStore.get("banking_demo_session")?.value === "authenticated";
+  } catch {
+    return false;
+  }
+}
+
 type TransferRequestBody = {
   accountCode?: string | null;
   accountId?: string | null;
   beneficiaryId?: string | null;
   beneficiaryName?: string;
   beneficiaryIban?: string;
+  beneficiaryBic?: string | null;
   beneficiaryBank?: string | null;
   beneficiaryEmail?: string | null;
   amount?: number;
@@ -43,6 +54,7 @@ type TransferRecord = {
   reference: string;
   beneficiary_name: string;
   beneficiary_iban: string;
+  beneficiary_bic: string | null;
   beneficiary_bank: string;
   beneficiary_email: string | null;
   amount: number | string;
@@ -234,6 +246,9 @@ function rpcErrorStatus(error: unknown): number {
 
 export async function GET(request: Request) {
   try {
+    if (!(await isAuthenticated())) {
+      return Response.json({ success: false, error: "UNAUTHORIZED", message: "Non authentifié" }, { status: 401 });
+    }
     const url = new URL(request.url);
     const limitParam = url.searchParams.get("limit");
     const limit = limitParam ? Math.min(Math.max(1, parseInt(limitParam)), 50) : 10;
@@ -276,6 +291,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    if (!(await isAuthenticated())) {
+      return jsonResponse({ success: false, error: "UNAUTHORIZED", message: "Non authentifié" }, 401);
+    }
     let body: TransferRequestBody;
     try {
       body = await request.json() as TransferRequestBody;
@@ -314,6 +332,7 @@ export async function POST(request: Request) {
     const executionDate = body.executionDate?.trim() || getTodayDateString();
     const reason = body.reason?.trim() || "Virement";
     const beneficiaryBank = body.beneficiaryBank?.trim() || null;
+    const beneficiaryBic = body.beneficiaryBic?.trim() || null;
     const beneficiaryEmail = body.beneficiaryEmail?.trim() || null;
     const idempotencyKey = body.idempotencyKey?.trim() || crypto.randomUUID();
     const beneficiaryId = body.beneficiaryId ?? null;
@@ -336,6 +355,7 @@ export async function POST(request: Request) {
       p_beneficiary_id: beneficiaryId,
       p_beneficiary_name: beneficiaryName,
       p_beneficiary_iban: beneficiaryIban,
+      p_beneficiary_bic: beneficiaryBic,
       p_beneficiary_bank: beneficiaryBank,
       p_beneficiary_email: beneficiaryEmail,
       p_amount: amount,
@@ -360,36 +380,37 @@ export async function POST(request: Request) {
     const updatedAccount = (rpcData.updated_account ?? null) as AccountRecord | null;
     const ordererName = updatedAccount?.holder_name?.trim() || "Frederico Di Mario";
 
-    void sendTransferEmail(transfer, ordererName)
-      .then(async (emailStatus) => {
-        if (emailStatus === "idle") return;
-
+    let finalEmailStatus: EmailStatus = "idle";
+    try {
+      finalEmailStatus = await sendTransferEmail(transfer, ordererName);
+      if (finalEmailStatus !== "idle") {
         const { error: updateError } = await supabase
           .from("transfers")
-          .update({ email_status: emailStatus })
+          .update({ email_status: finalEmailStatus })
           .eq("id", transfer.id);
 
         if (updateError) {
           console.error("[DB ERROR] failed to update transfer email_status", {
             reference: transfer.reference,
             transferId: transfer.id,
-            emailStatus,
+            emailStatus: finalEmailStatus,
             message: updateError.message,
           });
         } else {
           console.log("[DB] transfer email_status updated", {
             reference: transfer.reference,
             transferId: transfer.id,
-            emailStatus,
+            emailStatus: finalEmailStatus,
           });
         }
-      })
-      .catch((bgError) => {
-        console.error("[BACKGROUND EMAIL] unexpected error", {
-          transferId: transfer.id,
-          message: getErrorMessage(bgError),
-        });
+      }
+    } catch (bgError) {
+      finalEmailStatus = "failed";
+      console.error("[EMAIL] unexpected error", {
+        transferId: transfer.id,
+        message: getErrorMessage(bgError),
       });
+    }
 
     console.log("[ACCOUNT BLOCKED]", {
       accountId: (updatedAccount as Record<string, unknown>)?.id,
@@ -401,11 +422,11 @@ export async function POST(request: Request) {
       success: true,
       transfer: {
         ...transfer,
-        email_status: "sending",
+        email_status: finalEmailStatus,
       },
       transaction: rpcData.transaction,
       updatedAccount: rpcData.updated_account,
-      emailStatus: "sending",
+      emailStatus: finalEmailStatus,
     }, 201);
   } catch (error) {
     console.error("[api/transfers] unexpected error:", getErrorMessage(error));
