@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { buildBeneficiaryTransferHtml } from "@/emails/beneficiaryTransferEmail";
 import { sendEmail } from "@/lib/emailClient";
-import { generateBeneficiaryTransferPdfBase64 } from "@/utils/generateBeneficiaryTransferPdf";
+import { generateTransferPdfBase64 } from "@/lib/pdf-generator";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -129,7 +129,6 @@ async function sendTransferEmail(
   }
 
   const executionDateFormatted = new Date(`${transfer.execution_date}T00:00:00`).toLocaleDateString("fr-FR");
-  const now = new Date();
 
   const emailPayload = {
     beneficiaryName: transfer.beneficiary_name,
@@ -146,17 +145,15 @@ async function sendTransferEmail(
   let pdfAttachment: { filename: string; content: Buffer; contentType: string } | null = null;
 
   try {
-    const pdf = generateBeneficiaryTransferPdfBase64({
+    const pdf = generateTransferPdfBase64({
       beneficiaryName: transfer.beneficiary_name,
-      beneficiaryBank: transfer.beneficiary_bank || "",
       beneficiaryIban: transfer.beneficiary_iban,
-      ordererName,
-      amount: formatTransferAmount(transfer.amount),
+      donorName: ordererName,
+      amount: Number(transfer.amount),
+      currency: "EUR",
       reference: transfer.reference,
-      executionDate: executionDateFormatted,
-      validationDate: now.toLocaleDateString("fr-FR"),
-      validationTime: now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-      reason: typeof transfer.reason === "string" ? transfer.reason : "",
+      date: executionDateFormatted,
+      status: "En cours de traitement",
     });
 
     pdfAttachment = {
