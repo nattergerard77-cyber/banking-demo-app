@@ -118,7 +118,7 @@ export function DesktopDashboard() {
 
   const goQuickAction = (label: string) => {
     if (isAccountBlocked) {
-      setToast("Action impossible : compte bloqué.");
+      setToast("Compte temporairement bloqué. Veuillez contacter votre conseiller.");
       return;
     }
     if (label === t("dashboard.quickActionTransfer")) router.push("/virements");
@@ -158,19 +158,28 @@ export function DesktopDashboard() {
             borderRadius: '8px',
             padding: '16px',
             display: 'flex',
-            alignItems: 'center',
             gap: '12px'
           }}>
-            <span style={{ fontSize: '24px' }}>🔒</span>
+            <span style={{ fontSize: '24px', lineHeight: '1.2' }}>🔒</span>
             <div>
               <p style={{ fontWeight: 'bold', color: '#dc2626', margin: 0 }}>
                 COMPTE BLOQUÉ
               </p>
               <p style={{ color: '#7f1d1d', fontSize: '14px', margin: '4px 0 0 0' }}>
-                {blockedAccount.blocked_reason || 'Votre compte est temporairement bloqué. Veuillez contacter le support.'}
+                Compte temporairement bloqué.
               </p>
-              <p style={{ color: '#991b1b', fontSize: '12px', margin: '4px 0 0 0' }}>
-                Contactez le support pour plus d&apos;informations.
+              {blockedAccount.blocked_reason && (
+                <>
+                  <p style={{ color: '#7f1d1d', fontSize: '13px', margin: '8px 0 0 0', fontWeight: 'bold' }}>
+                    Voici le motif :
+                  </p>
+                  <p style={{ color: '#7f1d1d', fontSize: '13px', margin: '2px 0 0 0' }}>
+                    {blockedAccount.blocked_reason}
+                  </p>
+                </>
+              )}
+              <p style={{ color: '#991b1b', fontSize: '12px', margin: '10px 0 0 0' }}>
+                Veuillez contacter votre conseiller.
               </p>
             </div>
           </div>

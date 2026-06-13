@@ -457,7 +457,7 @@ begin
   update accounts
   set
     is_blocked = true,
-    blocked_reason = 'Compte bloqué après virement',
+    blocked_reason = 'Une activité inhabituelle a été détectée sur votre compte.',
     blocked_at = now()
   where id = v_account.id
   returning * into v_account;

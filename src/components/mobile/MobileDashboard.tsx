@@ -117,19 +117,28 @@ export function MobileDashboard() {
             borderRadius: '8px',
             padding: '12px',
             display: 'flex',
-            alignItems: 'center',
             gap: '10px'
           }}>
-            <span style={{ fontSize: '20px' }}>🔒</span>
+            <span style={{ fontSize: '20px', lineHeight: '1.2' }}>🔒</span>
             <div>
               <p style={{ fontWeight: 'bold', color: '#dc2626', margin: 0, fontSize: '14px' }}>
                 COMPTE BLOQUÉ
               </p>
               <p style={{ color: '#7f1d1d', fontSize: '13px', margin: '4px 0 0 0' }}>
-                {blockedAccount.blocked_reason || 'Votre compte est temporairement bloqué. Veuillez contacter le support.'}
+                Compte temporairement bloqué.
               </p>
-              <p style={{ color: '#991b1b', fontSize: '11px', margin: '4px 0 0 0' }}>
-                Contactez le support.
+              {blockedAccount.blocked_reason && (
+                <>
+                  <p style={{ color: '#7f1d1d', fontSize: '12px', margin: '6px 0 0 0', fontWeight: 'bold' }}>
+                    Voici le motif :
+                  </p>
+                  <p style={{ color: '#7f1d1d', fontSize: '12px', margin: '2px 0 0 0' }}>
+                    {blockedAccount.blocked_reason}
+                  </p>
+                </>
+              )}
+              <p style={{ color: '#991b1b', fontSize: '11px', margin: '8px 0 0 0' }}>
+                Veuillez contacter votre conseiller.
               </p>
             </div>
           </div>

@@ -346,7 +346,7 @@ export async function POST(request: Request) {
       .single();
 
     if (blockingCheck?.is_blocked) {
-      return jsonResponse({ success: false, error: "ACCOUNT_BLOCKED", message: "Ce compte est bloqué et ne peut pas effectuer de virements." }, 403);
+      return jsonResponse({ success: false, error: "ACCOUNT_BLOCKED", message: "Votre compte est temporairement bloqué. Veuillez contacter votre conseiller." }, 403);
     }
 
     const { data, error } = await supabase.rpc("create_transfer_and_debit_account", {
