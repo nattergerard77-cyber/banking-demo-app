@@ -11,7 +11,7 @@ export async function rejectTransfersAfter3Days() {
     const { data: transfers, error } = await supabase
       .from("transfers")
       .select("id, amount, currency, created_at, reference, beneficiary_name, beneficiary_email, status")
-      .eq("status", "executed")
+      .eq("status", "processing")
       .lt("created_at", twoMinutesAgo.toISOString())
       .is("rejected_at", null);
 
