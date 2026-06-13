@@ -168,16 +168,9 @@ export function DesktopDashboard() {
               <p style={{ color: '#7f1d1d', fontSize: '14px', margin: '4px 0 0 0' }}>
                 Compte temporairement bloqué.
               </p>
-              {blockedAccount.blocked_reason && (
-                <>
-                  <p style={{ color: '#7f1d1d', fontSize: '13px', margin: '8px 0 0 0', fontWeight: 'bold' }}>
-                    Voici le motif :
-                  </p>
-                  <p style={{ color: '#7f1d1d', fontSize: '13px', margin: '2px 0 0 0' }}>
-                    {blockedAccount.blocked_reason}
-                  </p>
-                </>
-              )}
+              <p style={{ color: '#7f1d1d', fontSize: '13px', margin: '8px 0 0 0' }}>
+                Une activité inhabituelle a été détectée sur votre compte.
+              </p>
               <p style={{ color: '#991b1b', fontSize: '12px', margin: '10px 0 0 0' }}>
                 Veuillez contacter votre conseiller.
               </p>
