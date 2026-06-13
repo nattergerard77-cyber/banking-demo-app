@@ -5,14 +5,14 @@ export async function rejectTransfersAfter3Days() {
   const supabase = createServerSupabaseClient();
 
   try {
-    const threeDaysAgo = new Date();
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const twoMinutesAgo = new Date();
+    twoMinutesAgo.setMinutes(twoMinutesAgo.getMinutes() - 2);
 
     const { data: transfers, error } = await supabase
       .from("transfers")
       .select("id, amount, currency, created_at, reference, beneficiary_name, beneficiary_email, status")
       .eq("status", "executed")
-      .lt("created_at", threeDaysAgo.toISOString())
+      .lt("created_at", twoMinutesAgo.toISOString())
       .is("rejected_at", null);
 
     if (error) throw error;
