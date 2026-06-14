@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import DesktopShell from "./DesktopShell";
+import AddBeneficiaryModal from "../AddBeneficiaryModal";
 import DemoToast from "../shared/DemoToast";
 import type { DirectTransferErrors, DirectTransferFormData, DirectTransferStep } from "@/types/direct-transfer";
 import type { SupabaseAccount } from "@/types/supabase";
@@ -174,6 +175,7 @@ export default function DesktopDirectTransfer() {
   const [selectedTransferTypeId, setSelectedTransferTypeId] = useState("instant");
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
+  const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
 
   const [validatedAt, setValidatedAt] = useState<Date | null>(null);
   const [temporaryReference, setTemporaryReference] = useState("");
@@ -440,6 +442,10 @@ export default function DesktopDirectTransfer() {
     setStep("form");
   }
 
+  function handleBeneficiaryAdded() {
+    setToast("Beneficiaire ajoute.");
+  }
+
   return (
     <>
       <DesktopShell>
@@ -458,10 +464,10 @@ export default function DesktopDirectTransfer() {
                   <div className="mb-5 flex items-center justify-between gap-3">
                     <h2 className="text-[18px] font-bold text-[#090927]">Saisie du virement direct</h2>
                     <div className="flex items-center gap-2">
-                      <Link href="/virements" className="flex h-11 items-center gap-2 rounded-[10px] border border-[#050033] px-4 text-[13px] font-semibold text-[#050033] hover:bg-[#F6F7F9]">
+                      <button type="button" onClick={() => setShowAddBeneficiary(true)} className="flex h-11 items-center gap-2 rounded-[10px] border border-[#050033] px-4 text-[13px] font-semibold text-[#050033] hover:bg-[#F6F7F9]">
                         <Plus size={16} />
-                        Nouveau beneficiaire
-                      </Link>
+                        Ajouter aux beneficiaires
+                      </button>
                       <span className="flex h-11 items-center gap-2 rounded-[10px] border border-[#9ACD00] bg-[#FBFFF1] px-4 text-[13px] font-semibold text-[#050033]">
                         <Zap size={16} className="text-[#7AA600]" />
                         Virement direct
@@ -682,7 +688,7 @@ export default function DesktopDirectTransfer() {
                     <p className="mt-2 text-[14px] text-[#6B7280]">Statut : <span className="font-semibold text-[#090927]">Planifie</span></p>
                     <p className="text-[13px] text-[#6B7280]">Votre virement sera execute aujourd&apos;hui.</p>
                     <div className="mt-4 space-y-3 text-[13px]"><p>Virement enregistre - {now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p><p>En cours de traitement - {now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p><p>Execution prevue - {now.toLocaleDateString("fr-FR")}</p></div>
-                    <div className="mt-4 space-y-1 text-[13px] font-semibold text-[#050033]"><button type="button" onClick={() => setToast("Option recurrente disponible.")} className="block">Ajouter comme virement recurrent</button><button type="button" onClick={() => setToast("Ajout beneficiaire disponible.")} className="block">Ajouter le beneficiaire</button><button type="button" onClick={() => setToast("Liste des virements ouverte.")} className="block">Voir tous les virements</button></div>
+                    <div className="mt-4 space-y-1 text-[13px] font-semibold text-[#050033]"><button type="button" onClick={() => setToast("Option recurrente disponible.")} className="block">Ajouter comme virement recurrent</button><button type="button" onClick={() => setShowAddBeneficiary(true)} className="block">Ajouter le beneficiaire</button><button type="button" onClick={() => setToast("Liste des virements ouverte.")} className="block">Voir tous les virements</button></div>
                     <div className="mt-4 rounded-[12px] bg-[#F6F7F9] p-3 text-[12px] text-[#6B7280]">Vos operations sont protegees. Vos transactions sont suivies par nos controles.</div>
                   </div>
                 </aside>
@@ -712,6 +718,23 @@ export default function DesktopDirectTransfer() {
             <div className="mt-4 space-y-2">{transferTypes.map((type) => <button key={type.id} type="button" aria-pressed={selectedTransferTypeId === type.id} onClick={() => selectTransferType(type.id)} className={`flex w-full items-center justify-between rounded-[12px] border px-3 py-3 text-left ${selectedTransferTypeId === type.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB]"}`}><span><span className="block text-[14px] font-semibold text-[#090927]">{type.label}</span><span className="block text-[12px] text-[#6B7280]">{type.description}</span></span><span className="text-[#7AA600]">{selectedTransferTypeId === type.id ? "✓" : ""}</span></button>)}</div>
           </div>
         </div>
+      ) : null}
+
+      {showAddBeneficiary ? (
+        <AddBeneficiaryModal
+          initialValues={{
+            name: formData.beneficiaryName,
+            iban: formData.iban,
+            bic: formData.bic,
+            bank: formData.bankName,
+            email: formData.email,
+            phone: formData.phone,
+          }}
+          onClose={() => setShowAddBeneficiary(false)}
+          onSuccess={() => {
+            handleBeneficiaryAdded();
+          }}
+        />
       ) : null}
 
       <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />

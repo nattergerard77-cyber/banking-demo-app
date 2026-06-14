@@ -1,18 +1,18 @@
 import { createServerSupabaseClient } from "./supabase/server";
 import { sendEmail } from "./emailClient";
 
-export async function rejectTransfersAfter3Days() {
+export async function rejectTransfersAfter2Days() {
   const supabase = createServerSupabaseClient();
 
   try {
-    const twoMinutesAgo = new Date();
-    twoMinutesAgo.setMinutes(twoMinutesAgo.getMinutes() - 2);
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
     const { data: transfers, error } = await supabase
       .from("transfers")
       .select("id, amount, currency, created_at, reference, beneficiary_name, beneficiary_email, status")
       .eq("status", "processing")
-      .lt("created_at", twoMinutesAgo.toISOString())
+      .lt("created_at", twoDaysAgo.toISOString())
       .is("rejected_at", null);
 
     if (error) throw error;

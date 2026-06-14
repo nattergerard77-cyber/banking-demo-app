@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Building2, CalendarDays, Check, CheckCircle2, Clock3, CreditCard, Download, Euro, FileText, Mail, Phone, Plus, User, Zap } from "lucide-react";
 
 import MobileShell from "./MobileShell";
+import AddBeneficiaryModal from "../AddBeneficiaryModal";
 import DemoToast from "../shared/DemoToast";
 import type { DirectTransferErrors, DirectTransferFormData, DirectTransferStep } from "@/types/direct-transfer";
 import type { SupabaseAccount } from "@/types/supabase";
@@ -161,6 +162,7 @@ export default function MobileDirectTransfer() {
   const [selectedTransferTypeId, setSelectedTransferTypeId] = useState("instant");
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
+  const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -415,6 +417,10 @@ export default function MobileDirectTransfer() {
     setStep("form");
   }
 
+  function handleBeneficiaryAdded() {
+    setToast("Beneficiaire ajoute.");
+  }
+
   return (
     <>
       <MobileShell>
@@ -428,7 +434,7 @@ export default function MobileDirectTransfer() {
           {step === "form" ? (
             <section className="rounded-[18px] border border-[#E5E7EB] bg-white p-4 shadow-[0_10px_26px_rgba(5,0,51,0.07)]">
               <div className="mb-4 grid grid-cols-2 gap-2">
-                <Link href="/virements" className="flex h-10 items-center justify-center gap-1 rounded-[10px] border border-[#050033] text-[12px] font-semibold text-[#050033]"><Plus size={14} />Nouveau beneficiaire</Link>
+                <button type="button" onClick={() => setShowAddBeneficiary(true)} className="flex h-10 items-center justify-center gap-1 rounded-[10px] border border-[#050033] text-[12px] font-semibold text-[#050033]"><Plus size={14} />Ajouter aux beneficiaires</button>
                 <span className="flex h-10 items-center justify-center gap-1 rounded-[10px] border border-[#9ACD00] bg-[#FBFFF1] text-[12px] font-semibold text-[#050033]"><Zap size={14} className="text-[#7AA600]" />Virement direct</span>
               </div>
 
@@ -755,6 +761,23 @@ export default function MobileDirectTransfer() {
       {showAccountPicker ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div role="dialog" aria-modal="true" className="w-full rounded-2xl bg-white p-4"><div className="flex items-center justify-between"><h2 className="text-[18px] font-bold text-[#090927]">Choisir le compte a debiter</h2><button type="button" aria-label="Fermer" onClick={() => setShowAccountPicker(false)} className="text-[#6B7280]">Fermer</button></div><div className="mt-3 space-y-2">{accountsLoading ? <p className="text-[14px] text-[#6B7280]">Chargement des comptes...</p> : accountsError ? <p className="text-[14px] text-[#DC2626]">Impossible de charger les comptes.</p> : debitAccounts.length === 0 ? <p className="text-[14px] text-[#6B7280]">Aucun compte disponible.</p> : debitAccounts.map((account) => { const isSelected = selectedDebitAccountId === account.id; return <button key={account.id} type="button" aria-pressed={isSelected} aria-label={`Selectionner ${account.name}`} onClick={() => { resetEmailForNewTransfer(); setSelectedDebitAccountId(account.id); setShowAccountPicker(false); }} className={`flex w-full items-center justify-between rounded-[12px] border px-3 py-3 text-left ${isSelected ? "border-[#9ACD00] bg-[#F7FBEA]" : "border-[#E5E7EB] bg-white"}`}><span><span className="block text-[14px] font-semibold text-[#090927]">{account.name}</span><span className="block text-[12px] text-[#6B7280]">{account.balance} - {maskIban(account.iban)}</span></span>{isSelected ? <span className="text-[#7AA600]"><Check size={15} /></span> : null}</button>; })}</div></div></div> : null}
 
       {showTypePicker ? <div className="fixed inset-0 z-[1300] flex items-end bg-[#050033]/40 p-3"><div role="dialog" aria-modal="true" className="w-full rounded-2xl bg-white p-4"><div className="flex items-center justify-between"><h2 className="text-[18px] font-bold text-[#090927]">Choisir le type de virement</h2><button type="button" aria-label="Fermer" onClick={() => setShowTypePicker(false)} className="text-[#6B7280]">Fermer</button></div><div className="mt-3 space-y-2">{transferTypes.map((type) => <button key={type.id} type="button" aria-pressed={selectedTransferTypeId === type.id} onClick={() => selectTransferType(type.id)} className={`flex w-full items-center justify-between rounded-[12px] border px-3 py-3 text-left ${selectedTransferTypeId === type.id ? "border-[#9ACD00] bg-[#FBFFF1]" : "border-[#E5E7EB]"}`}><span><span className="block text-[14px] font-semibold text-[#090927]">{type.label}</span><span className="block text-[12px] text-[#6B7280]">{type.description}</span></span><span className="text-[#7AA600]">{selectedTransferTypeId === type.id ? "✓" : ""}</span></button>)}</div></div></div> : null}
+
+      {showAddBeneficiary ? (
+        <AddBeneficiaryModal
+          initialValues={{
+            name: formData.beneficiaryName,
+            iban: formData.iban,
+            bic: formData.bic,
+            bank: formData.bankName,
+            email: formData.email,
+            phone: formData.phone,
+          }}
+          onClose={() => setShowAddBeneficiary(false)}
+          onSuccess={() => {
+            handleBeneficiaryAdded();
+          }}
+        />
+      ) : null}
 
       <DemoToast open={Boolean(toast)} message={toast} onClose={() => setToast("")} />
     </>

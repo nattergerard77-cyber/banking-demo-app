@@ -3,8 +3,12 @@
   "outputDirectory": ".next",
   "crons": [
     {
+      "path": "/api/cron/process-scheduled-tasks",
+      "schedule": "*/1 * * * *"
+    },
+    {
       "path": "/api/cron/reject-transfers",
-      "schedule": "*/2 * * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }

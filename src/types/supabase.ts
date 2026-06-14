@@ -44,7 +44,7 @@ export type SupabaseTransaction = {
   amount: number | string;
   currency: "EUR";
   direction: "credit" | "debit";
-  status: "pending" | "executed" | "cancelled";
+  status: "pending" | "processing" | "executed" | "rejected" | "cancelled";
   transaction_date: string;
   transaction_time?: string | null;
   iban?: string | null;

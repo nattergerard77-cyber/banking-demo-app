@@ -1,7 +1,5 @@
 import { cookies } from "next/headers";
-import { buildBeneficiaryTransferHtml } from "@/emails/beneficiaryTransferEmail";
-import { sendEmail } from "@/lib/emailClient";
-import { generateTransferPdfBase64 } from "@/lib/pdf-generator";
+import { scheduleTransferReceipt } from "@/lib/schedule-transfer-receipt";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -95,104 +93,6 @@ function getErrorMessage(error: unknown): string {
     if (typeof obj.message === "string" && obj.message) return obj.message;
   }
   return "Unknown transfer error";
-}
-
-function maskEmail(email: string): string {
-  const [localPart, domain] = email.split("@");
-
-  if (!localPart || !domain) return "invalid-email";
-
-  return `${localPart[0] ?? "*"}***@${domain}`;
-}
-
-function formatTransferAmount(amount: number | string): string {
-  const parsed = typeof amount === "number" ? amount : Number(amount);
-
-  if (!Number.isFinite(parsed)) return String(amount);
-
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(parsed);
-}
-
-async function sendTransferEmail(
-  transfer: TransferRecord,
-  ordererName: string,
-): Promise<EmailStatus> {
-  const beneficiaryEmail = transfer.beneficiary_email?.trim();
-
-  if (!beneficiaryEmail) {
-    return "idle";
-  }
-
-  const executionDateFormatted = new Date(`${transfer.execution_date}T00:00:00`).toLocaleDateString("fr-FR");
-
-  const emailPayload = {
-    beneficiaryName: transfer.beneficiary_name,
-    amount: formatTransferAmount(transfer.amount),
-    ordererName,
-    executionDate: executionDateFormatted,
-    reference: transfer.reference,
-    beneficiaryIban: transfer.beneficiary_iban,
-    reason: typeof transfer.reason === "string" ? transfer.reason : undefined,
-  };
-
-  const htmlContent = buildBeneficiaryTransferHtml(emailPayload);
-
-  let pdfAttachment: { filename: string; content: Buffer; contentType: string } | null = null;
-
-  try {
-    const pdf = generateTransferPdfBase64({
-      beneficiaryName: transfer.beneficiary_name,
-      beneficiaryIban: transfer.beneficiary_iban,
-      donorName: ordererName,
-      amount: Number(transfer.amount),
-      currency: "EUR",
-      reference: transfer.reference,
-      date: executionDateFormatted,
-      status: "En cours de traitement",
-    });
-
-    pdfAttachment = {
-      filename: pdf.fileName,
-      content: Buffer.from(pdf.base64, "base64"),
-      contentType: "application/pdf",
-    };
-  } catch (pdfError) {
-    console.error("[EMAIL PDF ERROR] Failed to generate PDF attachment", {
-      reference: transfer.reference,
-      error: getErrorMessage(pdfError),
-    });
-    return "failed";
-  }
-
-  try {
-    const emailResult = await sendEmail({
-      to: beneficiaryEmail,
-      subject: "Avis de virement",
-      html: htmlContent,
-      attachments: pdfAttachment ? [pdfAttachment] : [],
-    });
-
-    console.log("[EMAIL DELIVERY] sent", {
-      reference: transfer.reference,
-      to: maskEmail(beneficiaryEmail),
-      messageId: emailResult.id,
-      timestamp: new Date().toISOString(),
-    });
-    return "sent";
-  } catch (error) {
-    console.error("[EMAIL DELIVERY] failed", {
-      reference: transfer.reference,
-      to: maskEmail(beneficiaryEmail),
-      error: getErrorMessage(error),
-      timestamp: new Date().toISOString(),
-    });
-    return "failed";
-  }
 }
 
 function getTodayDateString(): string {
@@ -375,34 +275,26 @@ export async function POST(request: Request) {
 
     const transfer = rpcData.transfer as TransferRecord;
     const updatedAccount = (rpcData.updated_account ?? null) as AccountRecord | null;
-    const ordererName = updatedAccount?.holder_name?.trim() || "Frederico Di Mario";
 
-    let finalEmailStatus: EmailStatus = "idle";
+    let finalEmailStatus: EmailStatus = transfer.email_status ?? "idle";
     try {
-      finalEmailStatus = await sendTransferEmail(transfer, ordererName);
-      if (finalEmailStatus !== "idle") {
-        const { error: updateError } = await supabase
-          .from("transfers")
-          .update({ email_status: finalEmailStatus })
-          .eq("id", transfer.id);
-
-        if (updateError) {
-          console.error("[DB ERROR] failed to update transfer email_status", {
-            reference: transfer.reference,
-            transferId: transfer.id,
-            emailStatus: finalEmailStatus,
-            message: updateError.message,
-          });
-        } else {
-          console.log("[DB] transfer email_status updated", {
-            reference: transfer.reference,
-            transferId: transfer.id,
-            emailStatus: finalEmailStatus,
-          });
-        }
-      }
+      await scheduleTransferReceipt(transfer.id, 4);
     } catch (bgError) {
       finalEmailStatus = "failed";
+      const { error: updateError } = await supabase
+        .from("transfers")
+        .update({ email_status: finalEmailStatus })
+        .eq("id", transfer.id);
+
+      if (updateError) {
+        console.error("[DB ERROR] failed to update scheduled transfer email_status", {
+          reference: transfer.reference,
+          transferId: transfer.id,
+          emailStatus: finalEmailStatus,
+          message: updateError.message,
+        });
+      }
+
       console.error("[EMAIL] unexpected error", {
         transferId: transfer.id,
         message: getErrorMessage(bgError),

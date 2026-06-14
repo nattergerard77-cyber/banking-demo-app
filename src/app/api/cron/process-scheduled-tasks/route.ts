@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rejectTransfersAfter2Days } from "@/lib/reject-transfer";
+
+import { processScheduledTasks } from "@/lib/schedule-transfer-receipt";
 
 export const runtime = "nodejs";
 
@@ -12,21 +13,24 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    console.log("[CRON] Démarrage du cron de rejet de virements...");
-    const result = await rejectTransfersAfter2Days();
+    console.log("[CRON] Démarrage du traitement des avis de virement différés...");
+    const result = await processScheduledTasks();
 
-    console.log(`[CRON] Complété : ${result.processed} virements traités`);
+    console.log(`[CRON] Complété : ${result.processed} avis différés traités (${result.sent} envoyés, ${result.failed} en échec)`);
 
     return NextResponse.json({
       success: true,
-      message: `${result.processed} virements rejetés et notifiés`,
+      message: "Scheduled tasks processed",
+      processed: result.processed,
+      sent: result.sent,
+      failed: result.failed,
       timestamp: result.timestamp,
     });
   } catch (error) {
-    console.error("[CRON] Erreur:", error);
+    console.error("[CRON] Erreur traitement avis différés:", error);
     return NextResponse.json(
       {
-        error: "Failed to process rejections",
+        error: "Failed to process scheduled tasks",
         details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },

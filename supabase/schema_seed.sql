@@ -176,32 +176,7 @@ on conflict (code) do update set
   holder_email = excluded.holder_email,
   display_order = excluded.display_order;
 
-insert into beneficiaries (
-  code,
-  name,
-  type,
-  iban,
-  bank,
-  email,
-  phone,
-  initials,
-  favorite,
-  active
-)
-values
-  ('luca-romano', 'Luca Romano', 'individual', 'LU28 0019 1111 2222 3333', 'Banque Raiffeisen Luxembourg', 'luca.romano@example.com', '+39 06 1234 5678', 'LR', true, true),
-  ('sofia-bianchi', 'Sofia Bianchi', 'individual', 'LU55 0019 4444 5555 6666', 'Banque de Luxembourg', 'sofia.bianchi@example.com', '+39 06 2345 6789', 'SB', true, true),
-  ('marco-conti', 'Marco Conti', 'individual', 'LU82 0019 7777 8888 9999', 'Banque Internationale à Luxembourg', 'marco.conti@example.com', '+39 06 3456 7890', 'MC', false, true)
-on conflict (code) do update set
-  name = excluded.name,
-  type = excluded.type,
-  iban = excluded.iban,
-  bank = excluded.bank,
-  email = excluded.email,
-  phone = excluded.phone,
-  initials = excluded.initials,
-  favorite = excluded.favorite,
-  active = excluded.active;
+-- Beneficiaries are managed by the user and are intentionally not seeded.
 
 -- Historical Italian incoming transfers. These rows seed displayable history only.
 -- The current balance remains stored in accounts and is not recalculated by this seed.
