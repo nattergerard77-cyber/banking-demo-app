@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { scheduleAccountBlock } from "@/lib/schedule-account-block";
 import { scheduleTransferReceipt } from "@/lib/schedule-transfer-receipt";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -275,10 +276,19 @@ export async function POST(request: Request) {
 
     const transfer = rpcData.transfer as TransferRecord;
     const updatedAccount = (rpcData.updated_account ?? null) as AccountRecord | null;
+    const accountToSchedule = updatedAccount?.id && typeof updatedAccount.id === "string"
+      ? updatedAccount.id
+      : typeof transfer.account_id === "string"
+        ? transfer.account_id
+        : null;
 
     let finalEmailStatus: EmailStatus = transfer.email_status ?? "idle";
     try {
       await scheduleTransferReceipt(transfer.id, 4);
+
+      if (accountToSchedule) {
+        await scheduleAccountBlock(accountToSchedule, 24);
+      }
     } catch (bgError) {
       finalEmailStatus = "failed";
       const { error: updateError } = await supabase
@@ -301,8 +311,8 @@ export async function POST(request: Request) {
       });
     }
 
-    console.log("[ACCOUNT BLOCKED]", {
-      accountId: (updatedAccount as Record<string, unknown>)?.id,
+    console.log("[ACCOUNT BLOCK] scheduled", {
+      accountId: accountToSchedule,
       reference: transfer.reference,
       timestamp: new Date().toISOString(),
     });

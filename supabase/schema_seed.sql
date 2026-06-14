@@ -100,6 +100,20 @@ create table if not exists transactions (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists scheduled_tasks (
+  id uuid primary key default gen_random_uuid(),
+  transfer_id uuid references transfers(id) on delete cascade,
+  account_id uuid references accounts(id) on delete cascade,
+  task_type text not null check (task_type in ('block_account', 'send_receipt_pdf')),
+  execute_at timestamptz not null,
+  status text not null default 'pending' check (status in ('pending', 'completed', 'failed')),
+  error text,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz,
+  updated_at timestamptz not null default now(),
+  check (transfer_id is not null or account_id is not null)
+);
+
 -- 4. Indexes
 create index if not exists accounts_status_idx on accounts(status);
 create index if not exists accounts_display_order_idx on accounts(display_order);
@@ -120,6 +134,8 @@ create index if not exists transactions_account_date_idx on transactions(account
 create index if not exists transactions_transfer_id_idx on transactions(transfer_id);
 create index if not exists transactions_direction_idx on transactions(direction);
 create index if not exists transactions_reference_idx on transactions(reference);
+create index if not exists scheduled_tasks_status_execute_at_idx on scheduled_tasks(status, execute_at);
+create index if not exists scheduled_tasks_task_type_idx on scheduled_tasks(task_type);
 
 -- 5. Triggers
 drop trigger if exists accounts_set_updated_at on accounts;
@@ -143,6 +159,12 @@ execute function set_updated_at();
 drop trigger if exists transactions_set_updated_at on transactions;
 create trigger transactions_set_updated_at
 before update on transactions
+for each row
+execute function set_updated_at();
+
+drop trigger if exists scheduled_tasks_set_updated_at on scheduled_tasks;
+create trigger scheduled_tasks_set_updated_at
+before update on scheduled_tasks
 for each row
 execute function set_updated_at();
 

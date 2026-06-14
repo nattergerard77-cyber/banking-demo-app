@@ -7,6 +7,10 @@
       "schedule": "*/1 * * * *"
     },
     {
+      "path": "/api/cron/process-account-blocks",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/reject-transfers",
       "schedule": "0 2 * * *"
     }
