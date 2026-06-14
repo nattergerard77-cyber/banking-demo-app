@@ -16,6 +16,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { TrustedDevices } from "@/components/TrustedDevices";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAccount } from "@/context/AccountContext";
 import type { SupabaseAccount, SupabaseTransaction } from "@/types/supabase";
@@ -87,6 +88,7 @@ export function MobileDashboard() {
   const totalBalance = accounts.reduce((sum: number, a: SupabaseAccount) => {
     return sum + Number(a.available_balance ?? a.balance ?? 0);
   }, 0);
+  const trustedDevicesAccountId = accounts.find((account) => account.code === "current")?.id ?? accounts[0]?.id ?? "";
 
   const accountIcon = (code: string) => {
     switch (code) {
@@ -365,6 +367,10 @@ export function MobileDashboard() {
           <ChevronRight size={16} className="text-[#050033]" />
         </MobileCard>
         </button>
+
+        {trustedDevicesAccountId ? (
+          <TrustedDevices accountId={trustedDevicesAccountId} />
+        ) : null}
       </div>
     </MobileShell>
     <DemoModal open={Boolean(modal)} title={modal?.title ?? ''} message={modal?.message ?? ''} onClose={() => setModal(null)} />

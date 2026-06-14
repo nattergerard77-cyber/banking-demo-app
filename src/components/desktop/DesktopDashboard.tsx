@@ -30,6 +30,7 @@ import DemoModal from "../shared/DemoModal";
 import DemoToast from "../shared/DemoToast";
 
 import { useLastLogin } from "@/hooks/useLastLogin";
+import { TrustedDevices } from "@/components/TrustedDevices";
 import DesktopShell from "./DesktopShell";
 
 const chartData = [
@@ -115,6 +116,7 @@ export function DesktopDashboard() {
 
   const currentAccount = accounts.find((a: SupabaseAccount) => a.code === "current");
   const savingsAccount = accounts.find((a: SupabaseAccount) => a.code === "savings");
+  const trustedDevicesAccountId = currentAccount?.id ?? accounts[0]?.id ?? "";
 
   const goQuickAction = (label: string) => {
     if (isAccountBlocked) {
@@ -515,6 +517,10 @@ export function DesktopDashboard() {
             </Card>
           </div>
         </div>
+
+        {trustedDevicesAccountId ? (
+          <TrustedDevices accountId={trustedDevicesAccountId} />
+        ) : null}
       </div>
     </DesktopShell>
     <DemoModal open={Boolean(modal)} title={modal?.title ?? ''} message={modal?.message ?? ''} onClose={() => setModal(null)} />
