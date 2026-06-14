@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, Clock3, Euro, FileText, Landmark, Plus, Repeat, ShieldCheck, User, Wallet, X, Zap } from "lucide-react";
 
@@ -12,12 +12,14 @@ import type { SupabaseAccount } from "@/types/supabase";
 import { useLanguage } from "@/context/LanguageContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useMessages } from "@/context/MessageContext";
+import { useTransfersRealtime } from "@/hooks/useTransfersRealtime";
 import { generateTransferPdf } from "@/utils/generateTransferPdf";
 import {
   type EmailStatus,
 } from "@/utils/sendBeneficiaryTransferEmail";
 import { createSafeId } from "@/utils/safeId";
 import { formatIban } from "@/lib/validators";
+import type { SupabaseTransfer } from "@/types/supabase";
 
 const transferTypes = [
   { id: "instant", label: "Virement immediat", description: "Execution des validation" },
@@ -248,38 +250,24 @@ export default function DesktopTransfers() {
     };
   }, []);
 
-  useEffect(() => {
-    let ignore = false;
-    void (async () => {
-      setRecentTransfersLoading(true);
-      try {
-        const res = await fetch("/api/transfers?limit=5");
-        const json = await res.json() as { success: boolean; transfers?: Array<Record<string, unknown>> };
-        if (ignore) return;
-        if (!json.success || !json.transfers) {
-          setRecentTransfers([]);
-          return;
-        }
-        const mapped: RecentTransferItem[] = json.transfers.map((item) => ({
-          id: String(item.id ?? ""),
-          beneficiaryName: String(item.beneficiaryName ?? ""),
-          date: item.executionDate
-            ? new Date(`${String(item.executionDate)}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
-            : "",
-          reason: item.reason ? String(item.reason) : null,
-          amount: `${Number(item.amount).toFixed(2).replace(".", ",")} EUR`,
-          status: item.status === "executed" ? "Exécuté" : String(item.status ?? ""),
-          reference: String(item.reference ?? ""),
-        }));
-        setRecentTransfers(mapped);
-      } catch {
-        if (!ignore) setRecentTransfers([]);
-      } finally {
-        if (!ignore) setRecentTransfersLoading(false);
-      }
-    })();
-    return () => { ignore = true; };
+  const mapRecentTransfers = useCallback((transfers: SupabaseTransfer[]) => {
+    const mapped: RecentTransferItem[] = transfers.map((item) => ({
+      id: item.id,
+      beneficiaryName: item.beneficiaryName,
+      date: item.executionDate
+        ? new Date(`${item.executionDate}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+        : "",
+      reason: item.reason,
+      amount: `${Number(item.amount).toFixed(2).replace(".", ",")} EUR`,
+      status: item.status === "executed" ? "Exécuté" : String(item.status ?? ""),
+      reference: item.reference,
+    }));
+
+    setRecentTransfers(mapped);
+    setRecentTransfersLoading(false);
   }, []);
+
+  useTransfersRealtime(mapRecentTransfers, selectedDebitAccount?.supabaseId, 5);
 
   useEffect(() => {
     let ignore = false;
@@ -341,31 +329,6 @@ export default function DesktopTransfers() {
       }
     } catch {
       // silent
-    }
-  }
-
-  async function refreshRecentTransfers() {
-    try {
-      const res = await fetch("/api/transfers?limit=5");
-      const json = await res.json() as { success: boolean; transfers?: Array<Record<string, unknown>> };
-      if (!json.success || !json.transfers) {
-        setRecentTransfers([]);
-        return;
-      }
-      const mapped: RecentTransferItem[] = json.transfers.map((item) => ({
-        id: String(item.id ?? ""),
-        beneficiaryName: String(item.beneficiaryName ?? ""),
-        date: item.executionDate
-          ? new Date(`${String(item.executionDate)}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
-          : "",
-        reason: item.reason ? String(item.reason) : null,
-        amount: `${Number(item.amount).toFixed(2).replace(".", ",")} EUR`,
-        status: item.status === "executed" ? "Exécuté" : String(item.status ?? ""),
-        reference: String(item.reference ?? ""),
-      }));
-      setRecentTransfers(mapped);
-    } catch {
-      setRecentTransfers([]);
     }
   }
 
@@ -553,8 +516,6 @@ export default function DesktopTransfers() {
       const nextEmailStatus = result.transfer.email_status ?? result.emailStatus ?? "idle";
       setEmailStatus(nextEmailStatus);
       setEmailError(nextEmailStatus === "failed" ? "L'avis de virement n'a pas pu etre envoye au beneficiaire." : null);
-      void refreshRecentTransfers();
-
       await new Promise((r) => setTimeout(r, 4000));
       setShowSuccess(true);
       

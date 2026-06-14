@@ -55,3 +55,19 @@ export type SupabaseTransaction = {
   created_at?: string;
   updated_at?: string;
 };
+
+export type SupabaseTransfer = {
+  id: string;
+  reference: string;
+  beneficiaryName: string;
+  beneficiaryIban: string;
+  amount: number;
+  currency: string;
+  reason: string | null;
+  transferType: string;
+  executionDate: string;
+  status: string;
+  emailStatus: string;
+  createdAt: string;
+  accountId?: string | null;
+};

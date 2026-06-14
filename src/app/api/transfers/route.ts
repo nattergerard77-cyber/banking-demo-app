@@ -71,6 +71,7 @@ type AccountRecord = {
 type TransferListItem = {
   id: string;
   reference: string;
+  accountId: string;
   beneficiaryName: string;
   beneficiaryIban: string;
   amount: number;
@@ -155,7 +156,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from("transfers")
-      .select("id, reference, beneficiary_name, beneficiary_iban, amount, currency, reason, transfer_type, execution_date, status, email_status, created_at")
+      .select("id, reference, account_id, beneficiary_name, beneficiary_iban, amount, currency, reason, transfer_type, execution_date, status, email_status, created_at")
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -167,6 +168,7 @@ export async function GET(request: Request) {
     const transfers: TransferListItem[] = (data ?? []).map((item) => ({
       id: item.id,
       reference: item.reference,
+      accountId: item.account_id,
       beneficiaryName: item.beneficiary_name,
       beneficiaryIban: item.beneficiary_iban,
       amount: Number(item.amount),
